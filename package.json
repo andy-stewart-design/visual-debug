@@ -1,0 +1,12 @@
+{
+  "name": "visual-debug",
+  "version": "1.0.0",
+  "description": "",
+  "main": "index.js",
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "private": true,
+  "packageManager": "pnpm@11.28.11",
+  "type": "module"
+}
