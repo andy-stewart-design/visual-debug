@@ -26,8 +26,8 @@ Step 1.1 adds the development/build/check scripts below; Step 1.2 adds only the 
 
 | Proposed root command | Intended implementation / proof |
 | --- | --- |
-| `pnpm dev:extension` | WXT development command in `apps/extension`; development aid, not artifact acceptance. |
-| `pnpm dev:playground` | Vite in `apps/playground`; development aid for the deterministic Solid fixture. |
+| `pnpm dev:ext` | WXT development command in `apps/extension`; development aid, not artifact acceptance. |
+| `pnpm dev:int` | Vite in `apps/playground`; development aid for the deterministic Solid fixture. |
 | `pnpm check` | Runs `wxt prepare && tsc --noEmit` in `apps/extension`, then `tsc -b` in `apps/playground`. This is the sole root checking alias; no `typecheck`-named root alias. |
 | `pnpm build` | Runs the production build in each application; WXT Chrome MV3 output is manually inspected, not assumed from a directory name. |
 | `pnpm test:unit` | Lean Vitest runner, primarily for pure geometry/formatting and only useful cheap state/disposal tests; no browser harness. |
@@ -76,14 +76,14 @@ Tasks:
 Verification:
 
 - Automated: From the root, `pnpm check` passed (`wxt prepare && tsc --noEmit` for the extension and `tsc -b` for the playground). `pnpm build` passed for both apps: WXT produced `.output/chrome-mv3/`, and Vite produced `apps/playground/dist/`. These checks prove scaffold wiring only.
-- Manual: The user reported the official WXT Solid and Vite Solid TypeScript scaffolding flows. Inspected versions are Node `v24.19.0`, pnpm `11.28.11`, WXT `0.21.5`, Vite `8.3.5`, extension TypeScript `5.9.3`, and playground TypeScript `7.0.2`. The generated Chrome MV3 manifest and output entrypoints were inspected; generated output and types remain ignored. Exact root commands run for this increment were `pnpm dev:extension` and `pnpm dev:playground` (both reached their dev-server startup probes and were then terminated), followed by `pnpm check` and `pnpm build` (both passed). Browser feature acceptance is not applicable yet.
+- Manual: The user reported the official WXT Solid and Vite Solid TypeScript scaffolding flows. Inspected versions are Node `v24.19.0`, pnpm `11.28.11`, WXT `0.21.5`, Vite `8.3.5`, extension TypeScript `5.9.3`, and playground TypeScript `7.0.2`. The generated Chrome MV3 manifest and output entrypoints were inspected; generated output and types remain ignored. Exact root commands run for this increment were `pnpm dev:ext` and `pnpm dev:int` (both reached their dev-server startup probes and were then terminated), followed by `pnpm check` and `pnpm build` (both passed). Browser feature acceptance is not applicable yet.
 
 Completion gate: Official-create provenance is recorded, both scaffolds build/check, and the root aliases resolve to real commands. Record initial failures honestly before correcting them.
 Evidence: Verified — root `pnpm check` and `pnpm build` passed on 2026-11-05; scaffold wiring only, not measurement behavior.
 
 ### Step 1.2 — Add deterministic Solid playground fixtures and lightweight checks
 
-Status: Pending
+Status: In progress — implementation complete; awaiting explicit manual fixture smoke
 Requirements / acceptance: R9; foundation for AC2, AC6–AC8, AC11.
 Depends on: Step 1.1.
 Review boundary: Deterministic fixtures and lightweight unit setup, not feature behavior.
@@ -96,21 +96,21 @@ Expected files:
 
 Tasks:
 
-- [ ] Add fixed-rectangle geometry examples from the spec, nested markup, scroll containers, moving/resizing targets, transforms, and removal controls. Keep fixture coordinates and reset state deterministic.
-- [ ] Add link, form, checkbox, input, draggable, and custom pointer-down controls with observable action counters, focus, drag, submission, and navigation outcomes. Register page capture/bubble handlers before inspection can activate, including pointer-down controls and page capture events.
-- [ ] Add simple observable counters/outcomes and a reset control so ordinary browsing behavior can be checked manually before suppression is implemented. Keep the fixture useful for detecting leaks without building a replacement browser test framework.
-- [ ] Add only the lean unit setup useful for pure geometry/formatting and cheap state tests. Do not add Playwright, browser automation, test-driver endpoints, helper/manifest-copy machinery, extra test host permissions, or automatic browser/profile setup.
+- [x] Add fixed-rectangle geometry examples from the spec, nested markup, scroll containers, moving/resizing targets, transforms, and removal controls. Keep fixture coordinates and reset state deterministic.
+- [x] Add link, form, checkbox, input, draggable, and custom pointer-down controls with observable action counters, focus, drag, submission, and navigation outcomes. Register page capture/bubble handlers before inspection can activate, including pointer-down controls and page capture events.
+- [x] Add simple observable counters/outcomes and a reset control so ordinary browsing behavior can be checked manually before suppression is implemented. Keep the fixture useful for detecting leaks without building a replacement browser test framework.
+- [x] Review the lean unit-test requirement and defer runner installation until Step 3.1 introduces pure measurement calculations; no empty test setup or dependency was added. Do not add Playwright, browser automation, test-driver endpoints, helper/manifest-copy machinery, extra test host permissions, or automatic browser/profile setup.
 
 Verification:
 
-- Automated: Focused `pnpm test:unit` checks pure code only when such code exists; `pnpm check` checks the generated Solid TypeScript configuration.
-- Manual: Start the deterministic playground with `pnpm dev:playground`, exercise and reset every counter/outcome in an ordinary installed Chrome tab, and confirm the fixture can reveal pointer-down and page-capture activation before inspection suppression is attempted. Record fixture limitations honestly.
+- Automated: `pnpm check` passed on 2026-11-05 and `pnpm build` passed on 2026-11-05; both include the playground TypeScript/build output. No `pnpm test:unit` runner was added because pure measurement code is deferred to Step 3.1; no browser harness is planned.
+- Manual: Pending explicit smoke in an ordinary installed Chrome tab. Start the deterministic playground with `pnpm dev:int`, exercise and reset every counter/outcome, then check the fixed geometry and dynamic controls, including page/nested scrolling. Confirm the fixture can reveal normal pointer-down and page-capture observations before inspection suppression is attempted. No automated UI or Chrome check is claimed.
 
-Completion gate: The Solid fixture has observable, resettable outcomes for normal actions and dynamic geometry, and manual smoke confirms it can detect those actions. No browser harness or feature safety claim is required.
-Evidence: Not run.
+Completion gate: The Solid fixture has observable, resettable outcomes for normal actions and dynamic geometry, and manual smoke confirms it can detect those actions. Implementation is complete, but the gate remains open awaiting the user's manual fixture smoke; no browser harness or feature safety claim is required.
+Evidence: In progress — source implementation and root `pnpm check`/`pnpm build` passed on 2026-11-05; manual fixture smoke not run.
 
 Phase exit gate: Fresh scaffold builds/checks and the deterministic fixture manual smoke are recorded together. Scripts, fixture paths, runtime versions, and any pre-existing environment failures are recorded.
-Evidence: Not run.
+Evidence: Pending — Step 1.2 manual smoke remains outstanding; Phase 1 stays incomplete.
 
 ## Phase 2 — Safe and reversible inspection
 

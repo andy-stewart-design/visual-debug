@@ -10,6 +10,7 @@
   "packageManager": "pnpm@11.28.11",
   "type": "module",
   "scripts": {
+    "dev": "pnpm -r --parallel --filter @visual-debug/extension --filter playground run dev",
     "dev:ext": "pnpm --filter @visual-debug/extension dev",
     "dev:int": "pnpm --filter playground dev",
     "check": "pnpm --filter @visual-debug/extension check && pnpm --filter playground check",
