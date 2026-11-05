@@ -3,17 +3,17 @@
 ## Status and governing source
 
 - Governing spec: [spec.md](spec.md).
-- Delivery state: Planning only. No application, unit suite, or implementation exists.
-- Acceptance or release still pending: All implementation and acceptance gates. Store publication is out of scope.
-- Blockers: No known product blocker. Event-safety feasibility is an explicit execution gate in Step 2.2. Browser/toolchain availability and permission to install dependencies or load an unpacked extension must be established during execution, not assumed here. No runtime checks have been run.
+- Delivery state: In progress. Official application scaffolds exist and Step 1.1 workspace wiring is verified; feature implementation and manual acceptance remain pending.
+- Acceptance or release still pending: All feature implementation and acceptance gates. Store publication is out of scope.
+- Blockers: No known product blocker. Event-safety feasibility is an explicit execution gate in Step 2.2. Browser availability and permission to load an unpacked extension must be established during execution, not assumed here. Scaffold check/build verification has run; no feature behavior has been exercised.
 
 Step statuses below are the authoritative execution record. A phase is complete only when its step completion gates and phase exit gate are satisfied. Implementation verification does not imply live acceptance or release.
 
 ## Execution constraints
 
 - All project paths are relative to `/Users/robestewart/Documents/Development/visual-debug`; commands run there unless stated otherwise.
-- Preserve `plans/measurement-tools/spec.md` and unrelated work. Only planning documents exist today; there is no runnable baseline, known green suite, or observed runtime failure.
-- This document authorizes no execution. Do not automatically scaffold, install, run tests, commit, publish, or change a browser profile after authoring it.
+- Preserve `plans/measurement-tools/spec.md` and unrelated work. The official application scaffolds now provide a runnable scaffold baseline; no feature behavior or known green unit suite is claimed.
+- Step 1.1 scaffold/wiring execution was explicitly authorized and is recorded below. Do not begin later implementation steps, add dependencies/tests, commit, publish, or change a browser profile without their stated authorization.
 - Proposed implementation assumptions follow the spec: WXT/TypeScript, Chrome MV3 first, pnpm workspace, Solid UI, Solid + TypeScript playground, Shadow DOM UI, and user-invoked `activeTab` access. Solid is the user's explicit UI choice; WXT, pnpm, and Chrome-first remain planning assumptions rather than newly explicit approvals. No framework/package extraction is needed.
 - Use official create flows in new application directories. If a target already exists when execution begins, inspect it and stop rather than using overwrite/force flags. Do not scaffold into the populated repository root.
 - Before executing create commands, inspect the selected releases' runtime requirements and CLI help. Use a compatible available Node/pnpm, record actual versions, and pin resolved dependencies in the workspace lockfile. Do not install a system toolchain or globally upgrade packages without approval.
@@ -22,14 +22,14 @@ Step statuses below are the authoritative execution record. A phase is complete 
 
 ### Proposed tooling and verification commands
 
-None of these scripts currently exists. Step 1.1 adds the development/build/check scripts; Step 1.2 adds only the lean unit-test script and any needed Vitest configuration. Preserve useful official scaffold scripts and expose these root aliases:
+Step 1.1 adds the development/build/check scripts below; Step 1.2 adds only the lean unit-test script and any needed Vitest configuration. Preserve useful official scaffold scripts and expose these root aliases:
 
 | Proposed root command | Intended implementation / proof |
 | --- | --- |
 | `pnpm dev:extension` | WXT development command in `apps/extension`; development aid, not artifact acceptance. |
 | `pnpm dev:playground` | Vite in `apps/playground`; development aid for the deterministic Solid fixture. |
-| `pnpm check` | Run WXT prepare, then extension TypeScript checking and playground generated TypeScript checking. This is the sole proposed root checking alias; no `typecheck`-named root alias. |
-| `pnpm build` | Production builds of both applications; WXT Chrome MV3 output is manually inspected, not assumed from a directory name. |
+| `pnpm check` | Runs `wxt prepare && tsc --noEmit` in `apps/extension`, then `tsc -b` in `apps/playground`. This is the sole root checking alias; no `typecheck`-named root alias. |
+| `pnpm build` | Runs the production build in each application; WXT Chrome MV3 output is manually inspected, not assumed from a directory name. |
 | `pnpm test:unit` | Lean Vitest runner, primarily for pure geometry/formatting and only useful cheap state/disposal tests; no browser harness. |
 
 Focused Vitest invocations use `pnpm test:unit -- <file>` after the script exists. Expected source/test paths below are proposed additions, not observations about generated templates. Adapt template-dependent locations once in Step 1.1 and record the actual paths here; do not duplicate source trees to match guesses. Browser behavior is validated manually in installed Chrome; no Playwright, browser automation, browser test driver, helper/manifest-copy machinery, automatic Chromium/profile setup, or test-only host permission is planned.
@@ -55,7 +55,7 @@ Review boundary: Workspace, applications, fixtures, and lightweight unit setup o
 
 ### Step 1.1 — Create applications through official CLIs
 
-Status: Pending
+Status: Verified
 Requirements / acceptance: R9, R10; AC12, foundation for AC11.
 Depends on: None.
 Review boundary: Official scaffolds and minimal workspace wiring; no extension feature code.
@@ -68,18 +68,18 @@ Expected files:
 
 Tasks:
 
-- [ ] Verify runtime/CLI requirements and empty targets, then use the official flows: `pnpm dlx wxt@latest init apps/extension --template solid --pm pnpm` and `pnpm create vite apps/playground --template solid-ts`. Record resolved versions and any CLI-required adjustment; no overwrite flags.
-- [ ] Consolidate to one workspace lockfile, use private workspace/application packages, and retain useful generated scripts. Avoid nested installs/lockfiles that accidentally create independent dependency trees.
-- [ ] Add the root development, check, and production-build aliases described above, using actual generated scripts/configuration and WXT prepare rather than inventing a WXT check command.
-- [ ] Keep both official applications buildable, retain Solid/TypeScript generated conventions, and ignore WXT output, generated types, and later test artifacts. Preserve planning documents.
+- [x] Verify runtime/CLI requirements and empty targets, then use the official flows: `pnpm dlx wxt@latest init apps/extension --template solid --pm pnpm` and `pnpm create vite apps/playground --template solid-ts`. The user reported these official CLI scaffolds; the selected Solid templates and resolved versions were inspected without overwrite flags.
+- [x] Consolidate to one workspace lockfile, use private workspace/application packages, and retain useful generated scripts. Avoid nested installs/lockfiles that accidentally create independent dependency trees.
+- [x] Add the root development, check, and production-build aliases described above, using actual generated scripts/configuration and WXT prepare rather than inventing a WXT check command.
+- [x] Keep both official applications buildable, retain Solid/TypeScript generated conventions, and ignore WXT output, generated types, and later test artifacts. Preserve planning documents.
 
 Verification:
 
-- Automated: From the root, the newly added `pnpm check` and `pnpm build` succeed. Inspect generated files and the manifest to establish actual entrypoint/output conventions. These checks prove scaffold wiring only.
-- Manual: Review create-flow/version evidence and the diff: two application directories, one workspace dependency tree, no overwritten planning files, no speculative shared packages. Browser feature acceptance is not applicable yet.
+- Automated: From the root, `pnpm check` passed (`wxt prepare && tsc --noEmit` for the extension and `tsc -b` for the playground). `pnpm build` passed for both apps: WXT produced `.output/chrome-mv3/`, and Vite produced `apps/playground/dist/`. These checks prove scaffold wiring only.
+- Manual: The user reported the official WXT Solid and Vite Solid TypeScript scaffolding flows. Inspected versions are Node `v24.19.0`, pnpm `11.28.11`, WXT `0.21.5`, Vite `8.3.5`, extension TypeScript `5.9.3`, and playground TypeScript `7.0.2`. The generated Chrome MV3 manifest and output entrypoints were inspected; generated output and types remain ignored. Exact root commands run for this increment were `pnpm dev:extension` and `pnpm dev:playground` (both reached their dev-server startup probes and were then terminated), followed by `pnpm check` and `pnpm build` (both passed). Browser feature acceptance is not applicable yet.
 
 Completion gate: Official-create provenance is recorded, both scaffolds build/check, and the root aliases resolve to real commands. Record initial failures honestly before correcting them.
-Evidence: Not run.
+Evidence: Verified — root `pnpm check` and `pnpm build` passed on 2026-11-05; scaffold wiring only, not measurement behavior.
 
 ### Step 1.2 — Add deterministic Solid playground fixtures and lightweight checks
 
@@ -322,7 +322,7 @@ This table assigns ownership; execution results belong in the named step, not a 
 | AC9 | Step 2.1 manual gate; Step 4.1 | Actual restricted-page denial is visible and navigation does not auto-restore inspection. | See owning steps; Pending, not run. |
 | AC10 | Step 2.1 manual gate; Step 4.1 artifact/live gate | Production access is explicit and current-tab scoped, with no inherited test or broad site grants. | See owning steps; Pending, not run. |
 | AC11 | Step 4.1 | Recorded own/public-site sample, observed limitations, and no universal iframe/shadow compatibility claim. | See owning step; Pending, not run. |
-| AC12 | Step 1.1 | Official CLI provenance, preserved spec, and no hand-rolled replacement scaffold. | See owning step; Pending, not run. |
+| AC12 | Step 1.1 | Official CLI provenance, preserved spec, and no hand-rolled replacement scaffold. | Verified — user-reported official CLI scaffolding and inspected generated templates/wiring; see Step 1.1. |
 
 ## Rollback and recovery
 
@@ -336,6 +336,6 @@ This table assigns ownership; execution results belong in the named step, not a 
 ## Deferred checks and accepted deviations
 
 - Accepted deviations: None. No waiver or permission to bypass a required check has been granted.
-- Required but unexecuted checks: Every lightweight unit and manual gate above. Unavailable unpacked-extension access or the user's app must be recorded as blockers at execution time, not assumed available. No runtime checks have been run during planning.
+- Required but unexecuted checks: Every lightweight unit and manual gate above, except the Step 1.1 scaffold check/build gate recorded above. Unavailable unpacked-extension access or the user's app must be recorded as blockers at execution time, not assumed available. No feature runtime checks have been run.
 - Deliberately out of scope: Playwright and automated browser testing for this slice, browser harnesses/drivers, publication/store packaging acceptance, cross-browser/platform matrices, iframe/closed-shadow traversal, editing/undo, parent navigation, pinned/exported measurements, and dotted-guide controls. Broader automation is explicitly deferred by the user, not a waiver of manual behavior acceptance and not a required unperformed browser test. These items must not appear as accidentally skipped first-slice acceptance.
 - Research used for planning, not execution evidence: [WXT installation](https://wxt.dev/guide/installation), [WXT CLI](https://wxt.dev/api/cli/wxt), [runtime active-tab example](https://github.com/wxt-dev/examples/tree/main/examples/active-tab-content-script), [Vite create flow](https://vite.dev/guide/), [Chrome activeTab](https://developer.chrome.com/docs/extensions/develop/concepts/activeTab), and [Solid render](https://docs.solidjs.com/reference/rendering/render). Recheck selected versions before implementation; official unpacked production/dev loading in installed Chrome is the intended browser procedure.

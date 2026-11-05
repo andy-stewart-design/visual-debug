@@ -8,5 +8,11 @@
   "license": "ISC",
   "private": true,
   "packageManager": "pnpm@11.28.11",
-  "type": "module"
+  "type": "module",
+  "scripts": {
+    "dev:ext": "pnpm --filter @visual-debug/extension dev",
+    "dev:int": "pnpm --filter playground dev",
+    "check": "pnpm --filter @visual-debug/extension check && pnpm --filter playground check",
+    "build": "pnpm --filter @visual-debug/extension build && pnpm --filter playground build"
+  }
 }
