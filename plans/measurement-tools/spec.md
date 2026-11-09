@@ -6,7 +6,7 @@
 - Blocking decisions: None; unconfirmed technical and geometry defaults are identified below rather than represented as user-approved decisions.
 - Source: The project discussion about a quieter VisBug-inspired extension, the user's selection/Option-hover mockups, and the request to create this specification.
 - Planning update: Before implementation, the user explicitly chose Solid for extension UI, requested `pnpm check` as the root validation command, deferred Playwright and automated browser testing, and requested lightweight tests plus extensive manual browser validation. This update changes the implementation/verification plan below; it does not claim any checks have run.
-- Delivery: Specification only. No application has been scaffolded or implemented. Readiness is not authorization to implement or publish.
+- Delivery: The first measurement slice is implemented. Automated implementation checks and user-reported production acceptance are recorded in [the plan](plan.md) and [manual acceptance evidence](evidence/manual-acceptance.md). This is not authorization to publish or a universal compatibility claim.
 
 ## Problem and intended outcome
 
@@ -38,8 +38,8 @@ Page-spanning dotted alignment guides are deliberately excluded from the propose
 
 ## Current behavior and evidence
 
-- At initial specification authoring, `/Users/robestewart/Documents/Development/visual-debug` was empty. It now contains the feature's planning documents but no application source, configuration, tests, or project instructions.
-- No local runtime behavior has been observed and no implementation verification has been performed.
+- At initial specification authoring, `/Users/robestewart/Documents/Development/visual-debug` was empty. It now contains the WXT/Solid extension, Solid integration/playground app, and focused unit tests; the original empty-project baseline is historical.
+- Implementation checks and static artifact reviews are recorded in [the plan](plan.md). The user subsequently reported guided production acceptance on the local integration app, Pitchfork, and eBay; see [manual acceptance evidence](evidence/manual-acceptance.md) for the actual cases and limits. The agent did not operate Chrome or independently observe those browser outcomes.
 - The user's VisBug screenshot illustrates competing page-spanning guides, selection indicators, and measurement annotations. This is visual evidence, not an audit of VisBug's event handling or geometry implementation.
 - The user's two mockups establish the intended distinction: quiet blue selection/hover outlines without Option; contrasting outlines plus a labeled distance while Option is held.
 - Reference materials supplied in the discussion: <https://github.com/GoogleChromeLabs/ProjectVisBug> and <https://wxt.dev/>. This is a new implementation inspired by the workflow, not a commitment to fork VisBug or preserve every reference behavior.

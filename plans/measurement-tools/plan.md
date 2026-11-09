@@ -3,29 +3,30 @@
 ## Status and governing source
 
 - Governing spec: [spec.md](spec.md).
-- Delivery state: In progress. Official application scaffolds exist and Step 1.1 workspace wiring is verified; feature implementation and manual acceptance remain pending.
-- Acceptance or release still pending: All feature implementation and acceptance gates. Store publication is out of scope.
-- Blockers: No known product blocker. Event-safety feasibility is an explicit execution gate in Step 2.2. Browser availability and permission to load an unpacked extension must be established during execution, not assumed here. Scaffold check/build verification has run; no feature behavior has been exercised.
+- Delivery state: Implemented; guided production acceptance recorded for the local integration/playground app, Pitchfork, and eBay. Manual outcomes are user-reported, not agent-observed browser results.
+- Acceptance or release still pending: No further checks requested for this named first-slice sample. Broader compatibility, adversarial input cases, and distribution remain outside this acceptance. No publication or deployment was performed.
+- Blockers: None for the recorded sample. See [manual acceptance evidence](evidence/manual-acceptance.md) for exercised checks, provenance gaps, and unclaimed coverage.
 
 Step statuses below are the authoritative execution record. A phase is complete only when its step completion gates and phase exit gate are satisfied. Implementation verification does not imply live acceptance or release.
 
 ## Execution constraints
 
 - All project paths are relative to `/Users/robestewart/Documents/Development/visual-debug`; commands run there unless stated otherwise.
-- Preserve `plans/measurement-tools/spec.md` and unrelated work. The official application scaffolds now provide a runnable scaffold baseline; no feature behavior or known green unit suite is claimed.
-- Step 1.1 scaffold/wiring execution was explicitly authorized and is recorded below. Do not begin later implementation steps, add dependencies/tests, commit, publish, or change a browser profile without their stated authorization.
+- Preserve `plans/measurement-tools/spec.md` and unrelated work. Implementation and the lean unit suite are present; distinguish previous agent-run automated checks, the user's latest command results, static artifact review, and user-reported manual acceptance.
+- The user authorized the recorded implementation increments and performed guided manual acceptance. This record is not permission for new features, dependencies, commits, publication, or browser-profile changes.
 - Proposed implementation assumptions follow the spec: WXT/TypeScript, Chrome MV3 first, pnpm workspace, Solid UI, Solid + TypeScript playground, Shadow DOM UI, and user-invoked `activeTab` access. Solid is the user's explicit UI choice; WXT, pnpm, and Chrome-first remain planning assumptions rather than newly explicit approvals. No framework/package extraction is needed.
 - Use official create flows in new application directories. If a target already exists when execution begins, inspect it and stop rather than using overwrite/force flags. Do not scaffold into the populated repository root.
 - Before executing create commands, inspect the selected releases' runtime requirements and CLI help. Use a compatible available Node/pnpm, record actual versions, and pin resolved dependencies in the workspace lockfile. Do not install a system toolchain or globally upgrade packages without approval.
 - Browser validation requires user-provided approval/access to load an unpacked extension in installed Chrome and inspect real sites. Record unavailable checks as Blocked, not passed; an optional separate development profile may be used, but no disposable profile or browser-binary setup is required.
 - Required safety fixtures cannot be removed merely to turn a failing gate green. If the scoped requirements cannot be met, stop at the safety gate and request a product decision rather than silently weakening the spec.
 
-### Proposed tooling and verification commands
+### Tooling and verification commands
 
-Step 1.1 adds the development/build/check scripts below; Step 3.1 adds the lean unit-test script and any needed Vitest configuration when pure measurement code is introduced. Preserve useful official scaffold scripts and expose these root aliases:
+These scripts now exist. Step 1.1 introduced workspace wiring; Step 3.1 introduced the lean unit runner. See the root README for development and production loading.
 
-| Proposed root command | Intended implementation / proof |
+| Root command | Implementation / proof |
 | --- | --- |
+| `pnpm dev` | Starts both workspace dev processes in parallel; WXT launches a development browser. |
 | `pnpm dev:ext` | WXT development command in `apps/extension`; development aid, not artifact acceptance. |
 | `pnpm dev:int` | Vite in `apps/playground`; development aid for the deterministic Solid fixture. |
 | `pnpm check` | Runs `wxt prepare && tsc --noEmit` in `apps/extension`, then `tsc -b` in `apps/playground`. This is the sole root checking alias; no `typecheck`-named root alias. |
@@ -83,7 +84,7 @@ Evidence: Verified — root `pnpm check` and `pnpm build` passed on 2026-11-05; 
 
 ### Step 1.2 — Add deterministic Solid playground fixtures and lightweight checks
 
-Status: In progress — implementation complete; awaiting explicit manual fixture smoke
+Status: Verified — implementation and user-reported playground acceptance
 Requirements / acceptance: R9; foundation for AC2, AC6–AC8, AC11.
 Depends on: Step 1.1.
 Review boundary: Deterministic fixtures and lightweight unit setup, not feature behavior.
@@ -104,13 +105,13 @@ Tasks:
 Verification:
 
 - Automated: `pnpm check` passed on 2026-11-05 and `pnpm build` passed on 2026-11-05; both include the playground TypeScript/build output. The unit runner was intentionally deferred at this step and introduced with Step 3.1's pure measurement code; no browser harness is planned.
-- Manual: Pending explicit smoke in an ordinary installed Chrome tab. Start the deterministic playground with `pnpm dev:int`, exercise and reset every counter/outcome, then check the fixed geometry and dynamic controls, including page/nested scrolling. Confirm the fixture can reveal normal pointer-down and page-capture observations before inspection suppression is attempted. No automated UI or Chrome check is claimed.
+- Manual: The user reported normal controls working after inspection exit, required action counters unchanged during selection, correct fixture geometry, native page/nested scrolling, and dynamic invalidation. See [guided acceptance record](evidence/manual-acceptance.md). This is user-reported, not automated or agent-observed UI evidence.
 
-Completion gate: The Solid fixture has observable, resettable outcomes for normal actions and dynamic geometry, and manual smoke confirms it can detect those actions. Implementation is complete, but the gate remains open awaiting the user's manual fixture smoke; no browser harness or feature safety claim is required.
-Evidence: In progress — source implementation and root `pnpm check`/`pnpm build` passed on 2026-11-05; manual fixture smoke not run.
+Completion gate: Verified for the exercised fixture cases through guided user-run production checks; no browser harness.
+Evidence: Verified — previous check/build results plus the reported playground outcomes in [guided acceptance record](evidence/manual-acceptance.md).
 
 Phase exit gate: Fresh scaffold builds/checks and the deterministic fixture manual smoke are recorded together. Scripts, fixture paths, runtime versions, and any pre-existing environment failures are recorded.
-Evidence: Pending — Step 1.2 manual smoke remains outstanding; Phase 1 stays incomplete.
+Evidence: Verified for the implemented fixture scope — scaffold results and guided playground acceptance are recorded.
 
 ## Phase 2 — Safe and reversible inspection
 
@@ -120,7 +121,7 @@ Review boundary: Activation, permissions, event safety, selection and quiet outl
 
 ### Step 2.1 — Add explicit activation and complete session teardown
 
-Status: In progress — implementation complete; awaiting manual lifecycle/permissions check
+Status: Verified — production lifecycle and permissions checks reported passed by the user
 Requirements / acceptance: R1, R7, R8; AC1 lifecycle foundation, AC9, AC10.
 Depends on: Step 1.2.
 Review boundary: Runtime injection, idempotent toggle/cleanup, and extension-owned activation feedback; page selection is not yet exposed.
@@ -144,23 +145,23 @@ Tasks:
 Verification:
 
 - Automated: `pnpm check`, `pnpm build`, and `git diff --check` passed on 2026-11-09. Production-output inspection confirmed the CSS Module class mappings and preserved host overrides in `.output/chrome-mv3/content-scripts/inspect.css`; the manifest contains only `activeTab` and `scripting`, has no `default_popup`, `content_scripts`, or `host_permissions`, and exposes only `content-scripts/inspect.css` to `http://*/*` and `https://*/*` for `cssInjectionMode: 'ui'`. The generated top-document runtime file is `.output/chrome-mv3/content-scripts/inspect.js`. No browser harness was added; the focused unit runner was introduced later with Step 3.1 pure geometry.
-- Manual prerequisite: Step 1.2's deterministic-playground smoke remains pending, so the Phase 1 exit gate is still open and is not silently treated as satisfied.
-- Manual Step 2.1 check: Pending user-run Chrome verification. For development testing, stop/restart `pnpm dev` so WXT regenerates `.output/chrome-mv3-dev`; the currently generated dev output still reflects the starter popup/Google registration. Alternatively load a clean production output unpacked. WXT dev may add development-only permissions, so do not treat its manifest as an exact production-manifest check. Activate once and verify the indicator says selection is unavailable; activate again and verify it disappears; repeat rapid toggles; exit with Escape and the visible button; navigate and confirm there is no restoration; verify isolation in a second tab; activate on a restricted `chrome://` page and verify an extension-owned `!` badge and descriptive action title; inspect the clean production artifact for no broad host access. Record browser/OS/build versions and actual lifecycle/permission results. The CSS Module refactor also requires this visual/lifecycle recheck against the CSS-loaded production artifact; prior inline-style working evidence does not close that check.
+- Manual prerequisite: The integration fixture was exercised during the guided production pass; see Step 1.2 and [guided acceptance record](evidence/manual-acceptance.md).
+- Manual Step 2.1 check: The user loaded `.output/chrome-mv3` in regular Chrome with the older dev copy disabled, and confirmed loading, toolbar toggle, Escape/visible Exit, and no automatic restoration after reload. The final tab-isolation/restricted-page summary was also reported passed. This covers the CSS-Module/App composition version and direct `on:click` fix. Exact Chrome/macOS versions were not supplied; see [guided acceptance record](evidence/manual-acceptance.md).
 - Static limitation: WXT shadow event isolation stops events once they reach the shadow root, but cannot prevent page capture listeners that ran earlier. This is not a universal hostile-page safety claim; Escape remains the only page-level keyboard listener in this lifecycle step.
 
-Completion gate: Static checks and artifact review pass, but Step 2.1 remains In progress until the actual Chrome action, permission, and lifecycle check is run. Full Step 2.1 Verified status and AC9/AC10 claims are pending that manual evidence; Phase 1 also remains incomplete pending Step 1.2 manual smoke.
-Evidence: In progress — explicit host stacking/pointer-event styling and WXT pointer/click event isolation added; production artifact remains clean. Confirmed bug: Solid `onClick` delegated to `document`, but isolated-shadow-root click handling stops it at the boundary; `SessionIndicator` now uses `on:click`, emitted as a direct listener in production `inspect.js`. Manual Step 1.2, Step 2.1, and visible Exit-click rechecks remain pending, and dev-output testing requires stopping/restarting `pnpm dev` first.
+Completion gate: Verified for the user-reported production action, lifecycle, and permission cases; not exhaustive error-path or cross-browser proof.
+Evidence: Verified — static artifact checks plus guided user-reported acceptance. The prior delegated-click bug was fixed and visible Exit was subsequently reported passed.
 
 ### Step 2.2 — Implement safe picking and quiet selection as one unit
 
-Status: In progress — implementation complete; awaiting mandatory installed-Chrome safety gate
+Status: Verified — required primary-control safety cases reported passed by the user
 Requirements / acceptance: R1–R3, R7; AC1–AC3.
 Depends on: Step 2.1 build/check and manual lifecycle gates; installed-Chrome safety gate below must pass before Phase 3.
 Review boundary: Input interception, hit testing, selected/hover state, and outline consumer are one review/revert unit.
 
 Expected files:
 
-- `apps/extension/lib/input.ts`, `apps/extension/lib/picking.ts`, `apps/extension/lib/selection.ts`, `apps/extension/lib/ui.tsx`, `apps/extension/lib/session.ts` — safe input/session integration.
+- `apps/extension/lib/picking.ts`, `apps/extension/lib/selection.ts`, `apps/extension/lib/ui.tsx`, `apps/extension/lib/session.ts` — safe input/session integration; interception is consolidated in `picking.ts`.
 - Optional focused unit tests for pure selection/state decisions; no browser test paths or safety driver.
 - Template-dependent Solid playground files — only additional reproducible safety cases found necessary during this step.
 
@@ -170,21 +171,21 @@ Tasks:
 - [x] Use capture interception while preserving scrolling and the direct accessible exit. Filter extension-owned events through the actual Shadow host's composed path and page targets through connected, finite, nonzero-area checks. No page element is modified for hit testing.
 - [x] Integrate one anchor and one hover comparison using actual top-document hit elements, quiet solid/dashed outlines, and extension-UI exclusion. No resize handles, full-page guides, parent navigation, or measurement labels.
 - [x] Suppress the relevant primary gesture sequence on `pointerdown`/fallback `mousedown`, including matching pressed `pointermove` and compatibility `mousemove`, then guard `pointerup`, compatibility click/double-click/auxclick, drag-start, and selection-start events. Hover snapshots still update quietly; wheel/scroll are intentionally not intercepted.
-- [x] Treat activation leaks as defects. The mandatory fixture safety gate remains outstanding; earlier page capture handlers and pre-existing pointer capture cannot be universally neutralized and will be recorded as compatibility limitations rather than claimed safe support. The manual gate must specifically exercise custom pointer-move controls and document page-established pointer capture as an unsupported limitation where relevant.
+- [x] Treat activation leaks as defects. Guided required primary-control checks were reported passed. Earlier page capture handlers and pre-existing pointer capture remain compatibility limits, not claimed safe support.
 
-Implementation evidence: `apps/extension/lib/picking.ts`, `lib/selection.ts`, `lib/session.ts`, `lib/ui.tsx`, `components/selection-overlay/`, the updated window-capture fixture instrumentation in `apps/playground/src/App.tsx`, and the indicator copy. Static source/artifact review plus `pnpm check`, `pnpm build`, and `git diff --check` passed; native scrollbar exemption is limited to measurable common tracks, with other browser variants unverified; no browser safety result is claimed.
+Implementation evidence: The picking/selection/session/UI modules, selection overlay, window-capture fixture instrumentation, and indicator copy. Previous check/build/diff and static artifact checks passed; later user-run production safety outcomes are recorded in [guided acceptance record](evidence/manual-acceptance.md). Native scrollbar/platform variants and bespoke pre-existing pointer capture were not separately verified.
 
 Verification:
 
 - Automated/static: The focused unit runner was added later for Step 3.1; no browser automation was added. `pnpm check`, `pnpm build`, and `git diff --check` passed. Production artifact review confirmed only `activeTab`/`scripting`, no `default_popup`/`content_scripts`/`host_permissions`, and only the HTTP(S) `inspect.css` web-accessible resource. Static review covered native hit testing, primary pointer/mouse/click safety guards, composed-path UI exclusion, cleanup, and the absence of wheel interception. Counters/focus/navigation must remain unchanged during the manual selection procedure, and page content/attributes/styles must remain unchanged except extension-owned insertion.
-- Manual safety gate: Pending user approval/access. Use installed macOS Chrome and the unmodified production build through Chrome's official Load unpacked flow. In the deterministic playground, first confirm counters/outcomes work normally, then select links, inputs, form controls, nested button content, draggable elements, and the custom pointer-down control. Exercise the pre-registered window capture observer, native page and nested scrolling, pointer movement over the extension UI, repeated visible/Escape exit, and ordinary browsing after exit. Record any earlier-handler or pointer-capture variants as unsupported rather than claiming universal event suppression.
-- Concise pending checklist: baseline/reset all counters; primary pointerdown selection of each required fixture and nested text; verify no click/checkbox/submit/focus-input/drag/hash outcome changes; compare page-capture observations separately; exercise custom pointer-move controls and note any page-established pointer-capture limitation; hover A/B/C without replacing A; move over indicator and click Exit; scroll page and nested scroller; repeat activate/select/Escape and visible exit; verify no page mutation and normal browsing after exit.
+- Manual safety gate: The user reported no activation on the link, submit button, checkbox, input, pointer-down control, nested button, or draggable target; controls worked again after exit. Capture observations were distinguished from activation. Page/nested scrolling and visible/Escape exits also passed by user report; see [guided acceptance record](evidence/manual-acceptance.md).
+- Residual characterization, not claimed by this pass: bespoke pointer-move editing controls, pre-existing pointer capture, hostile earlier listeners, and native scrollbar/touch variants.
 
-Completion gate: Required AC2 fixtures and selection invariants must pass in the explicit installed-Chrome manual safety gate. No measurement phase begins with an unaccepted safety failure. If browser access or a required safety property is unavailable, mark Blocked and name the affected gate.
-Evidence: In progress — implementation/static evidence recorded above; mandatory manual gate not run.
+Completion gate: Verified for the required primary-control sample via the user-run production safety gate. Do not retrospectively claim this gate had run before Phase 3 implementation.
+Evidence: Verified — static implementation results plus guided production safety reports in [guided acceptance record](evidence/manual-acceptance.md).
 
 Phase exit gate: Fresh `pnpm check`, `pnpm build`, and `git diff --check` pass, the mandatory installed-Chrome safety check is recorded, and repeated activate/select/exit restores normal interactions without page mutation or duplicate sessions.
-Evidence: Pending manual safety gate.
+Evidence: Verified for the reported primary-input sample — control safety, normal browsing after exit, lifecycle, and native scrolling.
 
 ## Phase 3 — Option-held measurement and resilient geometry
 
@@ -216,12 +217,12 @@ Verification:
 - Automated: `pnpm exec vitest run tests/unit/geometry.test.ts` passed (23 geometry tests); `pnpm test:unit` passed (37 tests across 2 files). Numeric relation/value outputs are asserted before formatting strings. Geometry uses one documented absolute `1e-7` CSS-pixel edge-comparison tolerance for floating-roundoff-only equality/touching/containment decisions; only corresponding near-zero gaps/insets are clamped, while meaningful fractional distances retain full precision. `pnpm check`, `pnpm build`, and `git diff --check` passed on 2026-11-09. Vitest `5.1.0`; no browser gate is needed for this pure calculation step.
 - Manual: Not required for numerical correctness; visual interpretation is verified with rendering in Step 3.2.
 
-Completion gate: Verified — every geometry-table example and boundary case passes; outputs cannot imply a negative distance or CSS margin/padding declaration. Step 3.2 and later remain Pending, and this does not claim the Phase 2 browser safety gate.
+Completion gate: Verified — geometry-table and tested boundary cases pass, with no negative-distance or CSS declaration claims. Later browser evidence is in Steps 3.2–4.1; pure tests alone do not prove input safety.
 Evidence: Verified — 37 pure geometry/formatting tests, root check/build, and diff check passed on 2026-11-09; geometry edge comparisons use the documented `1e-7` CSS-pixel numerical tolerance without rounding meaningful outputs.
 
 ### Step 3.2 — Connect Option state to restrained annotations
 
-Status: In progress — implementation complete; awaiting physical macOS Option, visual, and input-safety manual gate
+Status: Verified — user-reported physical Option, geometry, and Option-click checks
 Requirements / acceptance: R3–R5; AC3–AC6, blur portion of AC8.
 Depends on: Step 3.1.
 Review boundary: Modifier state and its complete UI/geometry consumer; temporary state does not alter selection.
@@ -242,14 +243,14 @@ Verification:
 
 - Automated: `pnpm test:unit` passed with 46 tests across 4 files; `pnpm check`, `pnpm build`, and `git diff --check` passed. Pure tests cover fresh-after-clear/repeat/left-right modifier transitions, horizontal/diagonal/containment/touching/overlap/invalid layout, and viewport label clamping. These checks do not claim to verify rendered labels, colors, or native key behavior; no UI/browser mocking harness was added.
 - Artifact: The production manifest remains limited to `activeTab` and `scripting`, with no popup, automatic content registration, or broad host permissions. Emitted `inspect.css` contains the measurement line/label and measurement outline classes.
-- Manual pending checklist: In installed macOS Chrome, activate/select A/hover B; test stationary Option hold/release; compare side, diagonal, inset, touching, and overlap fixtures; test no anchor and self-target; Option-click without activation or anchor change; hold while switching windows, release, and refocus with no stuck measurement; confirm Exit works normally under Option; recheck nested scrolling and prior pointer/form/drag/link safety. Do not treat earlier qualitative successes as passing this pending modifier/visual/input gate.
+- Manual acceptance: Stationary Option press/release, no-anchor/self cases, unchanged anchor on Option-click, quiet outline restoration, current-pair-only labels, 40px gap, 40/60px diagonal, 20/30/130/110px insets, touching, overlap, and reversed order were reported correct. Focus loss/release elsewhere/refocus did not resurrect measurements; see [guided acceptance record](evidence/manual-acceptance.md).
 
-Completion gate: In progress pending physical macOS Option behavior, visual review, and the earlier installed-Chrome input-safety recheck. Phase 3 is not complete; Step 3.3 remains Pending.
-Evidence: In progress — implementation and automated/artifact checks above; no browser runtime or physical Option result is claimed.
+Completion gate: Verified for the guided macOS Chrome modifier/visual/input cases as reported by the user; no independent browser instrumentation.
+Evidence: Verified — previous unit/artifact results plus guided user-reported production acceptance in [guided acceptance record](evidence/manual-acceptance.md).
 
 ### Step 3.3 — Keep bounds current and retire invalid targets
 
-Status: In progress — implementation and focused automated checks complete; installed-Chrome dynamic/lifecycle gate pending
+Status: Verified — tracking tests and user-reported dynamic/zoom/invalidation acceptance
 Requirements / acceptance: R6, R7; AC7, AC8, lifecycle regression in AC1.
 Depends on: Step 3.2.
 Review boundary: Dynamic bounds and resource disposal; no persistent session restoration.
@@ -269,13 +270,13 @@ Tasks:
 Verification:
 
 - Automated: `pnpm test:unit` passed with 53 tests across 5 files, including 7 focused tracking tests for coalesced invalidation, bounded sampling cancellation, observer replacement, hidden/dispose cancellation, partial setup failure, and detached owned-UI-host exit/disposal. The tracker now checks UI-host connectivity before filtering owned mutations and during refresh/resume; session startup owns mounted UI before picker construction, and picker listener setup rolls back on failure. `pnpm check` and `git diff --check` passed. No browser automation or DOM harness was added.
-- Manual pending gate: Use the existing playground in installed macOS Chrome and enable an animation/move/transform before inspection, or trigger target DOM changes externally/programmatically through DevTools/keyboard because page pointer controls are intentionally intercepted. With the pointer stationary, measure while animation runs; exercise document and nested scrolling, viewport resize, and real browser zoom; hide/remove targets or make them zero-area through external/programmatic stimulus; leave the page, blur the window, release Option, refocus and require a fresh Option keydown; then rapidly exit/remount. Confirm current DOM rectangles match lines/labels, comparison/anchor invalidation is immediate, a valid anchor survives blur without measurements, and no overlay/interception remains after exit. Review code/test evidence for no observer, polling, frame, listener, or target-reference leftovers. This checklist is not claimed as browser evidence until run.
+- Manual acceptance: The user reported stationary-pointer animation tracking, native document/nested scrolling, 125%/80% zoom retaining the 40 CSS-pixel gap, and fresh-Option behavior after focus loss. Timed anchor/comparison removal and zero-area comparison tests cleared stale targets. Earlier lifecycle checks covered exit and reload. See [guided acceptance record](evidence/manual-acceptance.md); exhaustive transform/sticky/hidden-document/host-removal variants were not separately attested.
 
-Completion gate: Automated tracker behavior is implemented and verified, but the dynamic-layout, real-zoom, focus/visibility, and rapid-exit installed-Chrome gate is still pending. No stale numeric annotations may survive invalidation, dynamic overlays must align with current bounds, and hidden/exited sessions must not keep active tracking work or page references.
-Evidence: In progress — implementation in `tracking.ts` and session/selection/picker seams; 53 unit tests across 5 files pass (7 tracking tests plus 46 prior pure tests). Browser/manual proof remains pending.
+Completion gate: Verified for the documented dynamic/invalidation cases through focused unit checks and user-reported production behavior. Disposal tests/static review support internal cleanup, not a browser memory-leak audit.
+Evidence: Verified — 53 previously recorded tests across 5 files plus the user's fresh command-pass report and guided outcomes in [guided acceptance record](evidence/manual-acceptance.md).
 
-Phase exit gate: Fresh `pnpm build`, `pnpm check`, and the lean unit suite pass together, then the installed-Chrome lifecycle, safety, physical Option, dynamic-layout, and browser-zoom manual gates must be recorded. Phase 3 remains In progress and Step 4.1 remains Pending; no unsupported geometric semantics have been introduced to hide a defect.
-Evidence: Pending manual gates.
+Phase exit gate: Automated measurement/tracking results compose with guided production lifecycle, input safety, Option, animation, invalidation, and zoom acceptance.
+Evidence: Verified for the documented first-slice sample; see [guided acceptance record](evidence/manual-acceptance.md) for exact checks and limits.
 
 ## Phase 4 — Production-artifact and real-page acceptance
 
@@ -285,7 +286,7 @@ Review boundary: Acceptance evidence, artifact isolation, and bounded fixes with
 
 ### Step 4.1 — Validate the production build and record support limits
 
-Status: Pending
+Status: Verified for the documented production sample — manual results reported by the user
 Requirements / acceptance: R1–R9; final AC1–AC11 verification.
 Depends on: Phase 3.
 Review boundary: Production artifact/manual boundary and final acceptance record. Substantial discovered fixes return to the owning step rather than accumulating an unrelated cleanup change.
@@ -298,40 +299,40 @@ Expected files:
 
 Tasks:
 
-- [ ] Build production afresh, then run the implemented lightweight checks. Inspect the production manifest/output for runtime-only activation, required minimal permissions, no test grants or driver, and no automatic page-wide content registration. Verify referenced scripts/styles exist; manual output review is sufficient.
-- [ ] Load that unmodified production output through Chrome's official Load unpacked flow with user-provided approval/access. A separate development profile is optional, not mandatory. Exercise the actual toolbar, visible exit, restricted-page feedback, tab isolation, rapid toggling, navigation cleanup, and control safety without test-granted host access.
-- [ ] Complete the physical Option, focus-loss, visual readability, real zoom, and dynamic-layout checks not already evidenced against this build. Include styles hostile to ordinary in-page UI to validate isolation.
-- [ ] Select and record a small concrete sample: the controlled playground, at least one accessible app the user works on, and two representative public sites. Use non-destructive inspection only; do not log in, submit forms, or touch sensitive data without explicit authorization. If the user's app is unavailable, leave that acceptance portion Blocked rather than silently replacing it.
-- [ ] Record browser/OS and build/dependency versions, pages/cases checked, observed results, screenshots where useful, unsupported iframe/shadow boundaries, and residual event-safety limitations. Update actual run instructions and each owning step's evidence/status.
+- [x] Build production afresh and run lightweight checks: user-reported `pnpm check`, `pnpm test:unit`, and `pnpm build` all passed before production loading. Later static review confirmed referenced output files, minimal permissions, CSS-only exposure, no popup, and no automatic content registration.
+- [x] Load `.output/chrome-mv3` through regular Chrome's Load unpacked flow with the older dev copy disabled; user confirmed loading, toggle, Escape/visible Exit, reload cleanup, and final permissions/tab isolation.
+- [x] Record guided Option, label/outline, focus-loss, zoom, animation, scrolling, and invalidation outcomes. Do not reinterpret these as exhaustive hostile-style, transform, or compatibility testing.
+- [x] Record the actual named sample: the owned local integration/playground app, Pitchfork, and eBay. The earlier proposed additional existing user app was not separately identified; no fourth app, exact external route, authenticated state, or embedded-content traversal is claimed.
+- [x] Record known source/toolchain context, reported Chrome-on-macOS outcomes, the named pages, and provenance/coverage gaps in `evidence/manual-acceptance.md`; exact browser/OS versions and screenshots were not supplied. Add root README and update owning statuses without publishing.
 
 Verification:
 
-- Automated: From the root, `pnpm check`, `pnpm build`, and lean `pnpm test:unit` are the only planned commands. Manual manifest/output review plus `pnpm build` is sufficient for artifact integrity; there is no browser harness or automated browser gate.
-- Manual: With user/machine access, run the production-output procedure above in installed Chrome. All required controls remain safely selectable; measurement values match inspected DOM bounds; denied activation is visible; normal browsing resumes after exit; tested support boundaries are stated honestly.
+- Automated/static: The user reported all three root commands passed during Checkpoint 1; the previous agent-run implementation suite recorded 53 tests. During documentation, static assertions confirmed all eight referenced/runtime files exist, only `activeTab`/`scripting` permissions, and only HTTP(S) `inspect.css` exposure. No browser test or new full-suite rerun was performed by the agent; user command logs were not supplied.
+- Manual: The user performed guided production checks and reported each checkpoint successful, then named Pitchfork and eBay for public-site smoke. See [guided acceptance record](evidence/manual-acceptance.md). The agent did not operate or independently observe Chrome.
 
-Completion gate: Every acceptance ID below points to recorded passing evidence or is explicitly Blocked/Accepted deviation/Deferred with its impact and actual approval owner if any. The feature is not labeled implementation-verified while a required gate is merely skipped. No release or publication is performed.
-Evidence: Not run.
+Completion gate: Verified for the documented first-slice sample and reported guided checks; every AC points to evidence below. This is scoped manual acceptance, not universal site support or permission to publish.
+Evidence: Verified — user-reported production acceptance plus static artifact review and root README. Named sample: local integration app, Pitchfork, eBay; no separate additional app reported.
 
-Phase exit gate: Unmodified production-artifact checks and required live acceptance pass, with accurate documentation of the tested sample. Outstanding required checks prevent a completed-feature claim; waivers are recorded as deviations, not passes.
-Evidence: Not run.
+Phase exit gate: Static production review and user-reported guided acceptance pass on the documented sample; broader characterization is not claimed.
+Evidence: Verified for this sample — see [guided acceptance record](evidence/manual-acceptance.md). No publication, deployment, or browser automation.
 
 ## Final acceptance
 
-This table assigns ownership; execution results belong in the named step, not a second independently maintained progress record. Every criterion is currently Pending; not run.
+This table assigns ownership; detailed results and provenance are in the owning steps and [guided acceptance record](evidence/manual-acceptance.md). Manual criteria are verified by user report for the guided scope, not agent-operated Chrome or exhaustive compatibility testing.
 
 | Spec acceptance ID | Owning step / gate | Verification and expected result | Evidence / status |
 | --- | --- | --- | --- |
-| AC1 | Steps 2.1, 2.2, 3.3; Phase 4 exit | One reversible session; safe selection composes with Escape/visible exit and no duplicate resources. | See owning steps; Pending, not run. |
-| AC2 | Step 2.2 safety gate; Step 4.1 production check | Required controls do not activate or focus during inspection, including pointer-down behavior; page content/styles are preserved. | See owning steps; Pending, not run. |
-| AC3 | Steps 2.2 and 3.2 | One unchanged anchor, one eligible comparison, extension UI excluded, no unrequested measurements. | See owning steps; Pending, not run. |
-| AC4 | Step 3.2 | Manual physical Option transitions show only the valid pair's measurements and return to quiet outlines. | See owning step; Pending, not run. |
-| AC5 | Step 3.2 | Option-click preserves the anchor and suppresses page activation. | See owning step; Pending, not run. |
-| AC6 | Steps 3.1 and 3.2 | Geometry table/boundaries produce correct CSS-pixel values and render consistent annotations. | See owning steps; Pending, not run. |
-| AC7 | Step 3.3 | Scroll, dynamic movement, resize, transforms, and real zoom keep bounds/labels current. | See owning step; Pending, not run. |
-| AC8 | Steps 3.2 and 3.3 | Removal, pointer leave, and focus changes clear stale/temporary state without losing a valid anchor on blur. | See owning steps; Pending, not run. |
-| AC9 | Step 2.1 manual gate; Step 4.1 | Actual restricted-page denial is visible and navigation does not auto-restore inspection. | See owning steps; Pending, not run. |
-| AC10 | Step 2.1 manual gate; Step 4.1 artifact/live gate | Production access is explicit and current-tab scoped, with no inherited test or broad site grants. | See owning steps; Pending, not run. |
-| AC11 | Step 4.1 | Recorded own/public-site sample, observed limitations, and no universal iframe/shadow compatibility claim. | See owning step; Pending, not run. |
+| AC1 | Steps 2.1, 2.2, 3.3; Phase 4 exit | One reversible session; safe selection composes with Escape/visible exit and no duplicate resources. | Verified — owning steps and guided user report; see evidence. |
+| AC2 | Step 2.2 safety gate; Step 4.1 production check | Required controls do not activate or focus during inspection, including pointer-down behavior; page content/styles are preserved. | Verified — owning steps and guided user report; see evidence. |
+| AC3 | Steps 2.2 and 3.2 | One unchanged anchor, one eligible comparison, extension UI excluded, no unrequested measurements. | Verified — owning steps and guided user report; see evidence. |
+| AC4 | Step 3.2 | Manual physical Option transitions show only the valid pair's measurements and return to quiet outlines. | Verified — owning step and guided user report; see evidence. |
+| AC5 | Step 3.2 | Option-click preserves the anchor and suppresses page activation. | Verified — owning step and guided user report; see evidence. |
+| AC6 | Steps 3.1 and 3.2 | Geometry table/boundaries produce correct CSS-pixel values and render consistent annotations. | Verified — owning steps and guided user report; see evidence. |
+| AC7 | Step 3.3 | Scroll, dynamic movement, resize, transforms, and real zoom keep bounds/labels current. | Verified — owning step and guided user report; see evidence. |
+| AC8 | Steps 3.2 and 3.3 | Removal, pointer leave, and focus changes clear stale/temporary state without losing a valid anchor on blur. | Verified — owning steps and guided user report; see evidence. |
+| AC9 | Step 2.1 manual gate; Step 4.1 | Actual restricted-page denial is visible and navigation does not auto-restore inspection. | Verified — owning steps and guided user report; see evidence. |
+| AC10 | Step 2.1 manual gate; Step 4.1 artifact/live gate | Production access is explicit and current-tab scoped, with no inherited test or broad site grants. | Verified — owning steps and guided user report; see evidence. |
+| AC11 | Step 4.1 | Recorded own/public-site sample, observed limitations, and no universal iframe/shadow compatibility claim. | Verified — owning step and guided user report; see evidence. |
 | AC12 | Step 1.1 | Official CLI provenance, preserved spec, and no hand-rolled replacement scaffold. | Verified — user-reported official CLI scaffolding and inspected generated templates/wiring; see Step 1.1. |
 
 ## Rollback and recovery
@@ -345,7 +346,8 @@ This table assigns ownership; execution results belong in the named step, not a 
 
 ## Deferred checks and accepted deviations
 
-- Accepted deviations: None. No waiver or permission to bypass a required check has been granted.
-- Required but unexecuted checks: The Step 3.1 lean unit suite and pure check/build gate are verified. Manual fixture, installed-Chrome safety/lifecycle, modifier, dynamic-layout, and production acceptance gates remain unexecuted. Unavailable unpacked-extension access or the user's app must be recorded as blockers at execution time, not assumed available. No browser feature runtime checks have been run.
+- Sample clarification: Actual named manual sample is the owned integration/playground app, Pitchfork, and eBay. An additional existing app was proposed but not separately identified; do not count one as tested. No wider compatibility waiver/publication approval is inferred.
+- Recorded evidence: Prior agent-run unit/check/build results, fresh user command-pass report, static production artifact assertions, and guided user-reported Chrome outcomes. Exact browser/OS versions, full user command logs, external routes, screenshots, and a separate additional app were not supplied.
+- Unclaimed characterization: hostile earlier handlers, pre-existing pointer capture, native scrollbar/touch variants, browser memory profiling, exhaustive transform/sticky/visibility cases, and external iframe/shadow internals. Named-site smoke does not establish every control/state on those sites.
 - Deliberately out of scope: Playwright and automated browser testing for this slice, browser harnesses/drivers, publication/store packaging acceptance, cross-browser/platform matrices, iframe/closed-shadow traversal, editing/undo, parent navigation, pinned/exported measurements, and dotted-guide controls. Broader automation is explicitly deferred by the user, not a waiver of manual behavior acceptance and not a required unperformed browser test. These items must not appear as accidentally skipped first-slice acceptance.
 - Research used for planning, not execution evidence: [WXT installation](https://wxt.dev/guide/installation), [WXT CLI](https://wxt.dev/api/cli/wxt), [runtime active-tab example](https://github.com/wxt-dev/examples/tree/main/examples/active-tab-content-script), [Vite create flow](https://vite.dev/guide/), [Chrome activeTab](https://developer.chrome.com/docs/extensions/develop/concepts/activeTab), and [Solid render](https://docs.solidjs.com/reference/rendering/render). Recheck selected versions before implementation; official unpacked production/dev loading in installed Chrome is the intended browser procedure.
