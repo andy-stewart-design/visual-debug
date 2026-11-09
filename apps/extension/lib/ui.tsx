@@ -12,6 +12,7 @@ type MountedUi = {
 
 export type SessionUi = {
   remove: () => void;
+  isUiConnected: () => boolean;
   isOwnEvent: (event: Event) => boolean;
   isOwnElement: (element: Element) => boolean;
 };
@@ -84,6 +85,7 @@ export async function mountSessionUi(
   const isOwnElement = (element: Element) => element === shadowHost || shadowHost.contains(element);
 
   return {
+    isUiConnected: () => shadowHost.isConnected,
     isOwnEvent,
     isOwnElement,
     remove: () => {

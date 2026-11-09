@@ -249,33 +249,33 @@ Evidence: In progress — implementation and automated/artifact checks above; no
 
 ### Step 3.3 — Keep bounds current and retire invalid targets
 
-Status: Pending
+Status: In progress — implementation and focused automated checks complete; installed-Chrome dynamic/lifecycle gate pending
 Requirements / acceptance: R6, R7; AC7, AC8, lifecycle regression in AC1.
 Depends on: Step 3.2.
 Review boundary: Dynamic bounds and resource disposal; no persistent session restoration.
 
 Expected files:
 
-- `apps/extension/lib/tracking.ts`, `apps/extension/lib/session.ts`, `apps/extension/lib/ui.tsx` — observation/scheduling and invalidation.
-- Optional focused unit tests for disposal/scheduling; dynamic layout and cleanup are checked manually in Chrome.
+- `apps/extension/lib/tracking.ts`, `apps/extension/lib/session.ts`, `apps/extension/lib/picking.ts`, `apps/extension/lib/selection.ts` — observation/scheduling, stationary-pointer hit testing, target tracking, invalidation, and cleanup.
+- `tests/unit/tracking.test.ts` — injected scheduler/observer lifecycle and coalescing checks; dynamic layout and cleanup remain manual Chrome checks.
 
 Tasks:
 
-- [ ] Track viewport/nested scrolling, resize, target resizing, and position changes. Use a bounded scheduler; ResizeObserver alone is insufficient for position-only movement. If animation-frame sampling is used during measurement, suspend it when annotations are hidden or the session ends.
-- [ ] Re-read bounds before drawing and use current hit testing when layout changes beneath a stationary pointer. Keep overlay/UI positioning in the same viewport coordinate system as the measured rectangles.
-- [ ] Clear stale comparison/anchor state when removed, zero-area, or otherwise ineligible; clear comparison on pointer leave. Preserve a valid anchor through window blur without retaining temporary measurement state.
-- [ ] Centralize disposal of listeners, observers, scheduled work, UI, and retained targets. Add rapid activate/exit and failure-during-initialization regression cases.
+- [x] Track viewport/nested scrolling and resize with one coalesced RAF; observe only the current anchor/comparison with `ResizeObserver`, replace/unobserve targets as identities change, and use a filtered document `MutationObserver` for removal, zero-area, and discrete layout/style invalidation. Observers disconnect while hidden and on disposal.
+- [x] Re-hit-test the retained pointer before reading selection snapshots, so stationary pointers follow current page hit testing after movement, transforms, scrolling, or removal. Use viewport `getBoundingClientRect()` snapshots for the existing overlay coordinate system.
+- [x] Clear stale comparison/anchor state through selection refresh when targets become detached, zero-area, or otherwise ineligible; retain a valid anchor through real window blur while picker/modifier state clears temporary measurement and pointer presence. Option-held RAF sampling continues while an anchor and known page pointer remain, including transient missing/self comparisons, and stops on release, leave, blur, hidden state, or disposal.
+- [x] Centralize tracker listener, observer, scheduled-frame, subscription, picker, selection, and UI teardown in session disposal. Preserve the asynchronous mount guard and cover partial observer-startup failure without leaving allocated observers behind.
 
 Verification:
 
-- Automated: Any focused `pnpm test:unit` disposal/scheduling checks and `pnpm check`. Assert scheduled work/resources are cancelled on all disposal paths; no browser automation is planned.
-- Manual: In installed Chrome, measure while scrolling the document and a nested container, resizing the viewport and targets, moving or transforming targets, and changing browser zoom. Compare current DOM rectangles with labels and line endpoints. Remove the comparison, then the anchor, and try zero-area targets and pointer leave: stale annotations clear and invalid anchors lose selection. Rapidly activate/exit and confirm no leftover overlays/interception; review disposal paths for cancelled tracking and released references. Synthetic viewport/DPR changes are not substituted for real browser zoom.
+- Automated: `pnpm test:unit` passed with 53 tests across 5 files, including 7 focused tracking tests for coalesced invalidation, bounded sampling cancellation, observer replacement, hidden/dispose cancellation, partial setup failure, and detached owned-UI-host exit/disposal. The tracker now checks UI-host connectivity before filtering owned mutations and during refresh/resume; session startup owns mounted UI before picker construction, and picker listener setup rolls back on failure. `pnpm check` and `git diff --check` passed. No browser automation or DOM harness was added.
+- Manual pending gate: Use the existing playground in installed macOS Chrome and enable an animation/move/transform before inspection, or trigger target DOM changes externally/programmatically through DevTools/keyboard because page pointer controls are intentionally intercepted. With the pointer stationary, measure while animation runs; exercise document and nested scrolling, viewport resize, and real browser zoom; hide/remove targets or make them zero-area through external/programmatic stimulus; leave the page, blur the window, release Option, refocus and require a fresh Option keydown; then rapidly exit/remount. Confirm current DOM rectangles match lines/labels, comparison/anchor invalidation is immediate, a valid anchor survives blur without measurements, and no overlay/interception remains after exit. Review code/test evidence for no observer, polling, frame, listener, or target-reference leftovers. This checklist is not claimed as browser evidence until run.
 
-Completion gate: No stale numeric annotations survive invalidation, dynamic overlays align with current bounds, and hidden/exited sessions do not keep active tracking work or page references.
-Evidence: Not run.
+Completion gate: Automated tracker behavior is implemented and verified, but the dynamic-layout, real-zoom, focus/visibility, and rapid-exit installed-Chrome gate is still pending. No stale numeric annotations may survive invalidation, dynamic overlays must align with current bounds, and hidden/exited sessions must not keep active tracking work or page references.
+Evidence: In progress — implementation in `tracking.ts` and session/selection/picker seams; 53 unit tests across 5 files pass (7 tracking tests plus 46 prior pure tests). Browser/manual proof remains pending.
 
-Phase exit gate: Fresh `pnpm build`, `pnpm check`, and the lean unit suite pass together. The installed-Chrome lifecycle, safety, physical Option, and browser-zoom manual gates are recorded; no unsupported geometric semantics have been introduced to hide a defect.
-Evidence: Not run.
+Phase exit gate: Fresh `pnpm build`, `pnpm check`, and the lean unit suite pass together, then the installed-Chrome lifecycle, safety, physical Option, dynamic-layout, and browser-zoom manual gates must be recorded. Phase 3 remains In progress and Step 4.1 remains Pending; no unsupported geometric semantics have been introduced to hide a defect.
+Evidence: Pending manual gates.
 
 ## Phase 4 — Production-artifact and real-page acceptance
 

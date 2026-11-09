@@ -2,6 +2,7 @@ import type { ContentScriptContext } from 'wxt/utils/content-script-context';
 import { createPicker, type Picker } from './picking';
 import { createModifierController } from './modifiers';
 import { createSelectionController } from './selection';
+import { createTrackingController, type TrackingController } from './tracking';
 import { mountSessionUi } from './ui';
 
 export type InspectionSession = {
@@ -17,32 +18,15 @@ export async function createInspectionSession(
   let removeInvalidationListener: (() => void) | undefined;
   let sessionUi: Awaited<ReturnType<typeof mountSessionUi>> | undefined;
   let picker: Picker | undefined;
-  let refreshFrame: number | undefined;
+  let tracking: TrackingController | undefined;
   const selection = createSelectionController();
-
-  const cancelRefresh = () => {
-    if (refreshFrame !== undefined) {
-      window.cancelAnimationFrame(refreshFrame);
-      refreshFrame = undefined;
-    }
-  };
-
-  const scheduleRefresh = () => {
-    if (disposed || refreshFrame !== undefined) return;
-    refreshFrame = window.requestAnimationFrame(() => {
-      refreshFrame = undefined;
-      picker?.refreshPointer();
-      selection.refresh();
-    });
-  };
 
   const dispose = () => {
     if (disposed) return;
     disposed = true;
     window.removeEventListener('keydown', onKeyDown, true);
-    window.removeEventListener('scroll', scheduleRefresh, true);
-    window.removeEventListener('resize', scheduleRefresh, true);
-    cancelRefresh();
+    tracking?.dispose();
+    tracking = undefined;
     picker?.dispose();
     picker = undefined;
     modifiers.dispose();
@@ -64,6 +48,7 @@ export async function createInspectionSession(
     if (disposed) return;
     picker?.refreshPointer();
     selection.refresh();
+    tracking?.invalidate();
   });
 
   try {
@@ -77,6 +62,7 @@ export async function createInspectionSession(
       throw new Error('The inspection page context became invalid during startup.');
     }
 
+    // Own the mounted UI before any later synchronous setup can fail.
     sessionUi = mountedUi;
     picker = createPicker({
       isOwnEvent: mountedUi.isOwnEvent,
@@ -84,8 +70,21 @@ export async function createInspectionSession(
       onHover: selection.setHover,
       onSelect: selection.select,
     });
-    window.addEventListener('scroll', scheduleRefresh, true);
-    window.addEventListener('resize', scheduleRefresh, true);
+    const createdTracking = createTrackingController({
+      selection,
+      picker,
+      isMeasuring: modifiers.held,
+      isOwnElement: mountedUi.isOwnElement,
+      isUiConnected: mountedUi.isUiConnected,
+      onUiDisconnected: dispose,
+    });
+    if (disposed) {
+      // A detached-host check can synchronously exit during tracker creation,
+      // before this session has a tracking reference to dispose.
+      createdTracking.dispose();
+      throw new Error('The inspection UI was removed during startup.');
+    }
+    tracking = createdTracking;
 
     if (ctx.isInvalid || disposed) {
       dispose();

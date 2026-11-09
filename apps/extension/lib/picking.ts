@@ -17,6 +17,7 @@ type SuppressedGesture = {
 };
 
 export type Picker = {
+  readonly hasPointer: () => boolean;
   refreshPointer: () => void;
   dispose: () => void;
 };
@@ -293,11 +294,29 @@ export function createPicker(options: PickerOptions): Picker {
     [document, 'visibilitychange', onVisibilityChange, true],
   ];
 
-  for (const [target, type, listener, capture] of listeners) {
-    target.addEventListener(type, listener, capture);
+  let registeredListeners = 0;
+  try {
+    for (const [target, type, listener, capture] of listeners) {
+      target.addEventListener(type, listener, capture);
+      registeredListeners += 1;
+    }
+  } catch (error) {
+    // A hostile or unusual EventTarget can throw partway through setup. Do
+    // not leave an input interceptor behind when construction fails.
+    for (let index = registeredListeners - 1; index >= 0; index -= 1) {
+      const listener = listeners[index];
+      if (listener) {
+        const [target, type, callback, capture] = listener;
+        target.removeEventListener(type, callback, capture);
+      }
+    }
+    throw error;
   }
 
   return {
+    hasPointer() {
+      return !disposed && lastPointer !== undefined;
+    },
     refreshPointer() {
       if (!disposed && lastPointer) updateHover(lastPointer);
     },
