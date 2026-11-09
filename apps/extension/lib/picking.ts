@@ -130,10 +130,10 @@ export function createPicker(options: PickerOptions): Picker {
     event.stopImmediatePropagation();
   };
 
-  const startGesture = (target: Element, pointerId?: number) => {
+  const startGesture = (target: Element | undefined, pointerId?: number) => {
     clearCompatibilityTimer();
     gesture = { pointerId, active: true, compatibilityUntil: 0 };
-    options.onSelect(target);
+    if (target) options.onSelect(target);
   };
 
   const onPointerMove = (event: PointerEvent) => {
@@ -169,6 +169,13 @@ export function createPicker(options: PickerOptions): Picker {
     }
 
     const target = hitTest({ clientX: event.clientX, clientY: event.clientY });
+    // Option-click is a page-gesture suppression path, not a selection path.
+    // Keep the gesture active even when hit testing has no eligible target.
+    if (event.altKey) {
+      startGesture(undefined, event.pointerId);
+      suppress(event);
+      return;
+    }
     if (!target) return;
 
     startGesture(target, event.pointerId);
@@ -209,6 +216,11 @@ export function createPicker(options: PickerOptions): Picker {
     // prevented the pointer event from reaching this interceptor.
     clearGesture();
     const target = hitTest({ clientX: event.clientX, clientY: event.clientY });
+    if (event.altKey) {
+      startGesture(undefined);
+      suppress(event);
+      return;
+    }
     if (!target) return;
     startGesture(target);
     suppress(event);

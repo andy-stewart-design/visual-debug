@@ -221,30 +221,31 @@ Evidence: Verified — 37 pure geometry/formatting tests, root check/build, and 
 
 ### Step 3.2 — Connect Option state to restrained annotations
 
-Status: Pending
+Status: In progress — implementation complete; awaiting physical macOS Option, visual, and input-safety manual gate
 Requirements / acceptance: R3–R5; AC3–AC6, blur portion of AC8.
 Depends on: Step 3.1.
 Review boundary: Modifier state and its complete UI/geometry consumer; temporary state does not alter selection.
 
 Expected files:
 
-- `apps/extension/lib/modifiers.ts`, `apps/extension/lib/session.ts`, `apps/extension/lib/ui.tsx`, proposed `apps/extension/lib/overlay.css` — measurement state and isolated presentation.
-- Optional focused unit tests for modifier/state transitions; manual Chrome procedures cover rendering and interaction.
+- `apps/extension/lib/modifiers.ts`, `apps/extension/lib/measurement.ts`, `apps/extension/lib/session.ts`, `apps/extension/lib/ui.tsx`, and `apps/extension/components/measurement-overlay/` — measurement state and isolated presentation.
+- `tests/unit/modifiers.test.ts`, `tests/unit/measurement.test.ts` — focused pure transition and layout checks; manual Chrome procedures cover rendering and interaction.
 
 Tasks:
 
-- [ ] Handle Option/Alt down/up without requiring pointer movement. On blur, clear temporary state and require a newly observed modifier state; do not resurrect measurement merely on refocus.
-- [ ] Read valid target rectangles and render geometry results only for distinct anchor/comparison pairs while Option is held. Include zero-gap and compact overlap presentation without unrelated neighbor measurements.
-- [ ] Replace quiet outline color during measurement rather than stacking outlines; render legible labels and minimal extension lines within the viewport. Keep selection/hover distinguishable, with no resizing affordance or full-page guides.
-- [ ] Implement Option-click's specified default: suppress page activation and preserve the anchor. Add modifier/no-anchor/self-target cases to the existing safety fixture checks.
+- [x] Handle Option/Alt down/up without requiring pointer movement. On blur or hidden visibility, clear temporary state and require a newly observed non-repeat modifier state; do not resurrect measurement merely on refocus. Track left/right Alt independently.
+- [x] Read valid target rectangle snapshots and render geometry results only for distinct anchor/comparison pairs while Option is held. Include zero-gap, four-direction containment, and compact overlap presentation without unrelated neighbor measurements.
+- [x] Replace quiet outline color during measurement rather than stacking outlines; render readable labels and minimal extension lines within the viewport. Keep selection/hover distinguishable, with no resizing affordance or full-page guides.
+- [x] Implement Option-click's specified default: suppress page activation and preserve the anchor in both pointerdown and mousedown paths. Retain gesture guards even when no anchor is selected.
 
 Verification:
 
-- Automated: `pnpm check` and any focused `pnpm test:unit` checks of pure modifier/selection state transitions. Unit tests do not claim to verify rendered labels, colors, or native key behavior; no UI/browser mocking harness is required.
-- Manual: In macOS Chrome, select A, hover B, press/release the physical Option key without moving, then switch focus while held. Verify immediate reveal/hide, contrasting outlines without duplicates, correct readable labels, and no measurement resurrection on refocus. Hover another target and Option-click: A remains selected and the page does not activate. Try no anchor and a self-target: neither produces measurements. Review side-by-side, diagonal, containment, and overlap examples; record visual mismatches rather than silently changing the geometry contract.
+- Automated: `pnpm test:unit` passed with 46 tests across 4 files; `pnpm check`, `pnpm build`, and `git diff --check` passed. Pure tests cover fresh-after-clear/repeat/left-right modifier transitions, horizontal/diagonal/containment/touching/overlap/invalid layout, and viewport label clamping. These checks do not claim to verify rendered labels, colors, or native key behavior; no UI/browser mocking harness was added.
+- Artifact: The production manifest remains limited to `activeTab` and `scripting`, with no popup, automatic content registration, or broad host permissions. Emitted `inspect.css` contains the measurement line/label and measurement outline classes.
+- Manual pending checklist: In installed macOS Chrome, activate/select A/hover B; test stationary Option hold/release; compare side, diagonal, inset, touching, and overlap fixtures; test no anchor and self-target; Option-click without activation or anchor change; hold while switching windows, release, and refocus with no stuck measurement; confirm Exit works normally under Option; recheck nested scrolling and prior pointer/form/drag/link safety. Do not treat earlier qualitative successes as passing this pending modifier/visual/input gate.
 
-Completion gate: The interaction and geometry compose in the runtime, the physical macOS modifier behavior is observed, and earlier input safety still passes manually.
-Evidence: Not run.
+Completion gate: In progress pending physical macOS Option behavior, visual review, and the earlier installed-Chrome input-safety recheck. Phase 3 is not complete; Step 3.3 remains Pending.
+Evidence: In progress — implementation and automated/artifact checks above; no browser runtime or physical Option result is claimed.
 
 ### Step 3.3 — Keep bounds current and retire invalid targets
 

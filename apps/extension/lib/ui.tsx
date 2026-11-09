@@ -3,6 +3,7 @@ import { createShadowRootUi } from 'wxt/utils/content-script-ui/shadow-root';
 import type { ContentScriptContext } from 'wxt/utils/content-script-context';
 import App from '../App';
 import type { SelectionController } from './selection';
+import type { Accessor } from 'solid-js';
 import './ui.css';
 
 type MountedUi = {
@@ -19,6 +20,7 @@ export async function mountSessionUi(
   ctx: ContentScriptContext,
   onExit: () => void,
   selection: SelectionController,
+  held: Accessor<boolean>,
 ): Promise<SessionUi> {
   let solidDisposed = false;
   const mounted: MountedUi = {
@@ -56,7 +58,7 @@ export async function mountSessionUi(
     ],
     onMount(uiContainer) {
       solidDispose = render(
-        () => <App onExit={onExit} selection={selection.state} />,
+        () => <App onExit={onExit} selection={selection.state} held={held} />,
         uiContainer,
       );
       return mounted;

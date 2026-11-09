@@ -1,5 +1,6 @@
 import type { ContentScriptContext } from 'wxt/utils/content-script-context';
 import { createPicker, type Picker } from './picking';
+import { createModifierController } from './modifiers';
 import { createSelectionController } from './selection';
 import { mountSessionUi } from './ui';
 
@@ -44,6 +45,7 @@ export async function createInspectionSession(
     cancelRefresh();
     picker?.dispose();
     picker = undefined;
+    modifiers.dispose();
     selection.dispose();
     removeInvalidationListener?.();
     removeInvalidationListener = undefined;
@@ -56,12 +58,20 @@ export async function createInspectionSession(
     if (event.key === 'Escape') dispose();
   };
 
+  // Register before the asynchronous Shadow UI mount so an invalidated
+  // startup cannot leave modifier listeners or held state behind.
+  const modifiers = createModifierController(() => {
+    if (disposed) return;
+    picker?.refreshPointer();
+    selection.refresh();
+  });
+
   try {
     if (ctx.isInvalid) throw new Error('The inspection page context is no longer valid.');
 
     window.addEventListener('keydown', onKeyDown, true);
     removeInvalidationListener = ctx.onInvalidated(dispose);
-    const mountedUi = await mountSessionUi(ctx, dispose, selection);
+    const mountedUi = await mountSessionUi(ctx, dispose, selection, modifiers.held);
     if (disposed || ctx.isInvalid) {
       mountedUi.remove();
       throw new Error('The inspection page context became invalid during startup.');

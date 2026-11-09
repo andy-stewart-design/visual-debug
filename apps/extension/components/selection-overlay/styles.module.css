@@ -12,3 +12,11 @@
 .hover {
   border: 2px dashed rgba(96, 165, 250, 0.9);
 }
+
+.measuring.anchor {
+  border-color: #f59e0b;
+}
+
+.measuring.hover {
+  border-color: #fbbf24;
+}

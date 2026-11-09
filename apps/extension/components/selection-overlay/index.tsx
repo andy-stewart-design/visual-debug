@@ -4,15 +4,18 @@ import s from './styles.module.css';
 
 type SelectionOverlayProps = {
   selection: Accessor<SelectionState>;
+  held: Accessor<boolean>;
 };
 
 export default function SelectionOverlay(props: SelectionOverlayProps) {
+  const isMeasuring = () => props.held() && Boolean(props.selection().anchor && props.selection().hover);
+
   return (
     <>
       <Show when={props.selection().anchor}>
         {(anchor) => (
           <div
-            class={`${s.outline} ${s.anchor}`}
+            class={`${s.outline} ${s.anchor} ${isMeasuring() ? s.measuring : ''}`}
             aria-hidden="true"
             style={{
               left: `${anchor().box.left}px`,
@@ -26,7 +29,7 @@ export default function SelectionOverlay(props: SelectionOverlayProps) {
       <Show when={props.selection().hover}>
         {(hover) => (
           <div
-            class={`${s.outline} ${s.hover}`}
+            class={`${s.outline} ${s.hover} ${isMeasuring() ? s.measuring : ''}`}
             aria-hidden="true"
             style={{
               left: `${hover().box.left}px`,
