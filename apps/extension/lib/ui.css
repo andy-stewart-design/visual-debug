@@ -1,0 +1,12 @@
+/* WXT's shadow reset uses all: initial !important, so keep the host's
+   viewport placement and stacking explicit and make the host non-blocking. */
+:host {
+  position: fixed !important;
+  inset: 0 !important;
+  width: 100vw !important;
+  height: 100vh !important;
+  display: block !important;
+  overflow: visible !important;
+  z-index: 2147483647 !important;
+  pointer-events: none !important;
+}

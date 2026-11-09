@@ -120,7 +120,7 @@ Review boundary: Activation, permissions, event safety, selection and quiet outl
 
 ### Step 2.1 — Add explicit activation and complete session teardown
 
-Status: Pending
+Status: In progress — implementation complete; awaiting manual lifecycle/permissions check
 Requirements / acceptance: R1, R7, R8; AC1 lifecycle foundation, AC9, AC10.
 Depends on: Step 1.2.
 Review boundary: Runtime injection, idempotent toggle/cleanup, and extension-owned activation feedback; page selection is not yet exposed.
@@ -128,24 +128,28 @@ Review boundary: Runtime injection, idempotent toggle/cleanup, and extension-own
 Expected files:
 
 - `apps/extension/wxt.config.ts`, `apps/extension/entrypoints/background.ts`, `apps/extension/entrypoints/inspect.content.ts` — explicit runtime entrypoint and action activation.
-- `apps/extension/lib/activation.ts`, `apps/extension/lib/session.ts`, `apps/extension/lib/ui.tsx` — activation controller, lifecycle, Solid-rendered isolated session UI.
+- `apps/extension/lib/activation.ts`, `apps/extension/lib/session.ts`, `apps/extension/lib/ui.tsx`, `apps/extension/lib/ui.css` — activation controller, lifecycle, Shadow DOM mounting/host styling, and Solid-rendered isolated session UI.
+- `apps/extension/components/session-indicator/index.tsx`, `apps/extension/components/session-indicator/styles.module.css` — presentational SessionIndicator component and CSS Module styles.
 - Optional focused unit tests for activation state; no browser test paths or driver infrastructure.
 
 Tasks:
 
-- [ ] Replace irrelevant starter UI/automatic injection with an action plus `activeTab` and `scripting`. Define the inspection content script as runtime-only with no broad matches or persistent all-sites host grant; inspect any generated CSS/web-accessible resources for least scope.
-- [ ] Route an action invocation through one activation controller to the actual generated script file. Serialize or otherwise make repeated/overlapping toggles deterministic; distinguish expected first injection from permission or page-access failure.
-- [ ] Make the runtime entrypoint maintain at most one page session, with an isolated active indicator/exit control and Escape cleanup. During this lifecycle-only checkpoint, clearly label selection unavailable; do not display a working inspection affordance before Step 2.2 makes it safe.
-- [ ] Tie Solid rendering cleanup to session teardown: invoke the `render()` disposer from `onRemove` and clear reactive effects, listeners, and session state on every exit or initialization failure.
-- [ ] Show denied/restricted-page activation in extension-owned action feedback, without relying on injecting an error UI into that page. Ensure partial initialization unwinds its own resources.
+- [x] Replace irrelevant starter UI/automatic injection with an action plus `activeTab` and `scripting`. Define the inspection content script as runtime-only with no broad matches or persistent all-sites host grant; inspect any generated CSS/web-accessible resources for least scope.
+- [x] Route an action invocation through one activation controller to the actual generated script file. Serialize or otherwise make repeated/overlapping toggles deterministic; distinguish expected first injection from permission or page-access failure.
+- [x] Make the runtime entrypoint maintain at most one page session, with an isolated active indicator/exit control and Escape cleanup. During this lifecycle-only checkpoint, clearly label selection unavailable; do not display a working inspection affordance before Step 2.2 makes it safe.
+- [x] Tie Solid rendering cleanup to session teardown: invoke the `render()` disposer from `onRemove` and clear reactive effects, listeners, and session state on every exit or initialization failure.
+- [x] Extract the presentational `SessionIndicator` into its approved component/CSS Module convention; keep Shadow DOM mounting, host positioning, disposal, and session lifetime in `lib/ui.tsx`/`lib/ui.css`.
+- [x] Show denied/restricted-page activation in extension-owned action feedback, without relying on injecting an error UI into that page. Ensure partial initialization unwinds its own resources.
 
 Verification:
 
-- Automated: `pnpm check`, `pnpm build`, and any focused `pnpm test:unit` checks of cheap activation-state decisions. No DOM, framework, or browser API mocking harness is required; these checks do not prove runtime cleanup or permissions.
-- Manual: With user approval/access and macOS Chrome available, build the production output and use Chrome's official Load unpacked flow on the reported output directory. A separate development profile is optional. Invoke the toolbar on the playground tab, rapidly toggle, exit through both controls, navigate, and try a restricted page and a second tab. Verify one session, no automatic restoration after navigation, no leftover overlays or interception after exit, scoped activation, and visible failure without broad site access. Review disposal paths for listeners and Solid resources; record exact browser/build versions.
+- Automated: `pnpm check`, `pnpm build`, and `git diff --check` passed on 2026-11-09. Production-output inspection confirmed the CSS Module class mappings and preserved host overrides in `.output/chrome-mv3/content-scripts/inspect.css`; the manifest contains only `activeTab` and `scripting`, has no `default_popup`, `content_scripts`, or `host_permissions`, and exposes only `content-scripts/inspect.css` to `http://*/*` and `https://*/*` for `cssInjectionMode: 'ui'`. The generated top-document runtime file is `.output/chrome-mv3/content-scripts/inspect.js`. No unit runner or browser harness was added.
+- Manual prerequisite: Step 1.2's deterministic-playground smoke remains pending, so the Phase 1 exit gate is still open and is not silently treated as satisfied.
+- Manual Step 2.1 check: Pending user-run Chrome verification. For development testing, stop/restart `pnpm dev` so WXT regenerates `.output/chrome-mv3-dev`; the currently generated dev output still reflects the starter popup/Google registration. Alternatively load a clean production output unpacked. WXT dev may add development-only permissions, so do not treat its manifest as an exact production-manifest check. Activate once and verify the indicator says selection is unavailable; activate again and verify it disappears; repeat rapid toggles; exit with Escape and the visible button; navigate and confirm there is no restoration; verify isolation in a second tab; activate on a restricted `chrome://` page and verify an extension-owned `!` badge and descriptive action title; inspect the clean production artifact for no broad host access. Record browser/OS/build versions and actual lifecycle/permission results. The CSS Module refactor also requires this visual/lifecycle recheck against the CSS-loaded production artifact; prior inline-style working evidence does not close that check.
+- Static limitation: WXT shadow event isolation stops events once they reach the shadow root, but cannot prevent page capture listeners that ran earlier. This is not a universal hostile-page safety claim; Escape remains the only page-level keyboard listener in this lifecycle step.
 
-Completion gate: `pnpm build` and any focused unit checks pass, and actual action/permission behavior is observed manually. If manual access is unavailable, the corresponding gate remains Blocked; later deterministic work may proceed, but AC9/AC10 cannot be claimed complete.
-Evidence: Not run.
+Completion gate: Static checks and artifact review pass, but Step 2.1 remains In progress until the actual Chrome action, permission, and lifecycle check is run. Full Step 2.1 Verified status and AC9/AC10 claims are pending that manual evidence; Phase 1 also remains incomplete pending Step 1.2 manual smoke.
+Evidence: In progress — explicit host stacking/pointer-event styling and WXT pointer/click event isolation added; production artifact remains clean. Confirmed bug: Solid `onClick` delegated to `document`, but isolated-shadow-root click handling stops it at the boundary; `SessionIndicator` now uses `on:click`, emitted as a direct listener in production `inspect.js`. Manual Step 1.2, Step 2.1, and visible Exit-click rechecks remain pending, and dev-output testing requires stopping/restarting `pnpm dev` first.
 
 ### Step 2.2 — Implement safe picking and quiet selection as one unit
 
