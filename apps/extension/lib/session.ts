@@ -1,4 +1,6 @@
 import type { ContentScriptContext } from 'wxt/utils/content-script-context';
+import { createPicker, type Picker } from './picking';
+import { createSelectionController } from './selection';
 import { mountSessionUi } from './ui';
 
 export type InspectionSession = {
@@ -13,11 +15,36 @@ export async function createInspectionSession(
   let disposed = false;
   let removeInvalidationListener: (() => void) | undefined;
   let sessionUi: Awaited<ReturnType<typeof mountSessionUi>> | undefined;
+  let picker: Picker | undefined;
+  let refreshFrame: number | undefined;
+  const selection = createSelectionController();
+
+  const cancelRefresh = () => {
+    if (refreshFrame !== undefined) {
+      window.cancelAnimationFrame(refreshFrame);
+      refreshFrame = undefined;
+    }
+  };
+
+  const scheduleRefresh = () => {
+    if (disposed || refreshFrame !== undefined) return;
+    refreshFrame = window.requestAnimationFrame(() => {
+      refreshFrame = undefined;
+      picker?.refreshPointer();
+      selection.refresh();
+    });
+  };
 
   const dispose = () => {
     if (disposed) return;
     disposed = true;
     window.removeEventListener('keydown', onKeyDown, true);
+    window.removeEventListener('scroll', scheduleRefresh, true);
+    window.removeEventListener('resize', scheduleRefresh, true);
+    cancelRefresh();
+    picker?.dispose();
+    picker = undefined;
+    selection.dispose();
     removeInvalidationListener?.();
     removeInvalidationListener = undefined;
     sessionUi?.remove();
@@ -34,11 +61,23 @@ export async function createInspectionSession(
 
     window.addEventListener('keydown', onKeyDown, true);
     removeInvalidationListener = ctx.onInvalidated(dispose);
-    sessionUi = await mountSessionUi(ctx, dispose);
+    const mountedUi = await mountSessionUi(ctx, dispose, selection);
+    if (disposed || ctx.isInvalid) {
+      mountedUi.remove();
+      throw new Error('The inspection page context became invalid during startup.');
+    }
+
+    sessionUi = mountedUi;
+    picker = createPicker({
+      isOwnEvent: mountedUi.isOwnEvent,
+      isOwnElement: mountedUi.isOwnElement,
+      onHover: selection.setHover,
+      onSelect: selection.select,
+    });
+    window.addEventListener('scroll', scheduleRefresh, true);
+    window.addEventListener('resize', scheduleRefresh, true);
 
     if (ctx.isInvalid || disposed) {
-      sessionUi?.remove();
-      sessionUi = undefined;
       dispose();
       throw new Error('The inspection page context became invalid during startup.');
     }

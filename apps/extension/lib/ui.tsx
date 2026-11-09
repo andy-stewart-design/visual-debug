@@ -2,6 +2,7 @@ import { render } from 'solid-js/web';
 import { createShadowRootUi } from 'wxt/utils/content-script-ui/shadow-root';
 import type { ContentScriptContext } from 'wxt/utils/content-script-context';
 import App from '../App';
+import type { SelectionController } from './selection';
 import './ui.css';
 
 type MountedUi = {
@@ -10,11 +11,14 @@ type MountedUi = {
 
 export type SessionUi = {
   remove: () => void;
+  isOwnEvent: (event: Event) => boolean;
+  isOwnElement: (element: Element) => boolean;
 };
 
 export async function mountSessionUi(
   ctx: ContentScriptContext,
   onExit: () => void,
+  selection: SelectionController,
 ): Promise<SessionUi> {
   let solidDisposed = false;
   const mounted: MountedUi = {
@@ -51,7 +55,10 @@ export async function mountSessionUi(
       'touchcancel',
     ],
     onMount(uiContainer) {
-      solidDispose = render(() => <App onExit={onExit} />, uiContainer);
+      solidDispose = render(
+        () => <App onExit={onExit} selection={selection.state} />,
+        uiContainer,
+      );
       return mounted;
     },
     onRemove(mountedUi) {
@@ -70,7 +77,13 @@ export async function mountSessionUi(
     throw error;
   }
 
+  const shadowHost = ui.shadowHost;
+  const isOwnEvent = (event: Event) => event.composedPath().includes(shadowHost);
+  const isOwnElement = (element: Element) => element === shadowHost || shadowHost.contains(element);
+
   return {
+    isOwnEvent,
+    isOwnElement,
     remove: () => {
       if (removed) return;
       removed = true;

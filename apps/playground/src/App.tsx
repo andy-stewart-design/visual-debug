@@ -140,15 +140,17 @@ function App() {
       setObservedBubble((count) => count + 1)
     }
 
-    document.addEventListener('pointerdown', observedTarget, true)
-    document.addEventListener('click', observedTarget, true)
+    // Install the page capture observers before an extension session can be activated.
+    // They only report routing observations; they are not part of the page outcomes.
+    window.addEventListener('pointerdown', observedTarget, true)
+    window.addEventListener('click', observedTarget, true)
     document.addEventListener('pointerdown', bubbledTarget)
     document.addEventListener('click', bubbledTarget)
     setInstrumentationReady(true)
 
     onCleanup(() => {
-      document.removeEventListener('pointerdown', observedTarget, true)
-      document.removeEventListener('click', observedTarget, true)
+      window.removeEventListener('pointerdown', observedTarget, true)
+      window.removeEventListener('click', observedTarget, true)
       document.removeEventListener('pointerdown', bubbledTarget)
       document.removeEventListener('click', bubbledTarget)
       setInstrumentationReady(false)

@@ -1,0 +1,14 @@
+.outline {
+  position: fixed;
+  z-index: 2147483646;
+  box-sizing: border-box;
+  pointer-events: none;
+}
+
+.anchor {
+  border: 2px solid rgba(37, 99, 235, 0.95);
+}
+
+.hover {
+  border: 2px dashed rgba(96, 165, 250, 0.9);
+}

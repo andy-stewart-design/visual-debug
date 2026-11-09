@@ -153,7 +153,7 @@ Evidence: In progress — explicit host stacking/pointer-event styling and WXT p
 
 ### Step 2.2 — Implement safe picking and quiet selection as one unit
 
-Status: Pending
+Status: In progress — implementation complete; awaiting mandatory installed-Chrome safety gate
 Requirements / acceptance: R1–R3, R7; AC1–AC3.
 Depends on: Step 2.1 build/check and manual lifecycle gates; installed-Chrome safety gate below must pass before Phase 3.
 Review boundary: Input interception, hit testing, selected/hover state, and outline consumer are one review/revert unit.
@@ -166,22 +166,25 @@ Expected files:
 
 Tasks:
 
-- [ ] First compare event-routing approaches in the real fixture: passive decoration with capture interception versus a hit-testable extension-owned input shield with underlying-element hit testing. Account for page listeners registered before activation, pointer-down behavior, and page-established pointer capture. Shadow DOM event isolation alone is not a safety proof.
-- [ ] Select the smallest approach that passes required fixtures, preserving scrolling and accessible exit. Filter extension-owned nodes and unsupported/zero-area targets without modifying page elements for hit testing. Do not expose a shield-free path that silently activates the page.
-- [ ] Integrate one anchor and one comparison, actual eligible-element picking, quiet distinguishable outlines, and extension-UI exclusion. No resize handles, full-page guides, or measurement labels.
-- [ ] Suppress the whole relevant primary gesture sequence, including default focus/drag and pointer-down activation. Include selection changes, nested controls, and normal behavior after exit in the same tests.
-- [ ] Treat activation leaks as defects. Required fixture failures block completion; exceptional unsupported cases must be documented without relabeling a required control as out of scope. If the architecture cannot meet R2, stop and seek a decision before measurement work.
+- [x] Compare the event-routing approaches against the real fixture's source instrumentation. Capture interception with native `elementFromPoint()` was chosen over a full-screen input shield: the CSS overlays remain `pointer-events: none`, nested scrolling stays native, and no custom scroll emulation or shield hit-target translation is required. Shadow DOM event isolation alone is not treated as a safety proof.
+- [x] Use capture interception while preserving scrolling and the direct accessible exit. Filter extension-owned events through the actual Shadow host's composed path and page targets through connected, finite, nonzero-area checks. No page element is modified for hit testing.
+- [x] Integrate one anchor and one hover comparison using actual top-document hit elements, quiet solid/dashed outlines, and extension-UI exclusion. No resize handles, full-page guides, parent navigation, or measurement labels.
+- [x] Suppress the relevant primary gesture sequence on `pointerdown`/fallback `mousedown`, including matching pressed `pointermove` and compatibility `mousemove`, then guard `pointerup`, compatibility click/double-click/auxclick, drag-start, and selection-start events. Hover snapshots still update quietly; wheel/scroll are intentionally not intercepted.
+- [x] Treat activation leaks as defects. The mandatory fixture safety gate remains outstanding; earlier page capture handlers and pre-existing pointer capture cannot be universally neutralized and will be recorded as compatibility limitations rather than claimed safe support. The manual gate must specifically exercise custom pointer-move controls and document page-established pointer capture as an unsupported limitation where relevant.
+
+Implementation evidence: `apps/extension/lib/picking.ts`, `lib/selection.ts`, `lib/session.ts`, `lib/ui.tsx`, `components/selection-overlay/`, the updated window-capture fixture instrumentation in `apps/playground/src/App.tsx`, and the indicator copy. Static source/artifact review plus `pnpm check`, `pnpm build`, and `git diff --check` passed; native scrollbar exemption is limited to measurable common tracks, with other browser variants unverified; no browser safety result is claimed.
 
 Verification:
 
-- Automated: Any focused `pnpm test:unit` checks pure selection/state decisions and `pnpm build`; no browser automation is planned. Counters/focus/navigation must remain unchanged during the manual selection procedure, and page content/attributes/styles must remain unchanged except extension-owned insertion.
-- Manual safety gate: Before Phase 3, with user approval/access, use installed macOS Chrome and the unmodified production build through Chrome's official Load unpacked flow. In the deterministic playground, first confirm counters/outcomes work normally, then select links, inputs, form controls, nested button content, draggable elements, and the custom pointer-down control. Exercise page capture handlers, scrolling, Option-click, and exit. Observe selection without activation and ordinary browsing after exit. Record unsupported variants rather than claiming universal event suppression.
+- Automated/static: No focused unit runner or browser automation was added. `pnpm check`, `pnpm build`, and `git diff --check` passed. Production artifact review confirmed only `activeTab`/`scripting`, no `default_popup`/`content_scripts`/`host_permissions`, and only the HTTP(S) `inspect.css` web-accessible resource. Static review covered native hit testing, primary pointer/mouse/click safety guards, composed-path UI exclusion, cleanup, and the absence of wheel interception. Counters/focus/navigation must remain unchanged during the manual selection procedure, and page content/attributes/styles must remain unchanged except extension-owned insertion.
+- Manual safety gate: Pending user approval/access. Use installed macOS Chrome and the unmodified production build through Chrome's official Load unpacked flow. In the deterministic playground, first confirm counters/outcomes work normally, then select links, inputs, form controls, nested button content, draggable elements, and the custom pointer-down control. Exercise the pre-registered window capture observer, native page and nested scrolling, pointer movement over the extension UI, repeated visible/Escape exit, and ordinary browsing after exit. Record any earlier-handler or pointer-capture variants as unsupported rather than claiming universal event suppression.
+- Concise pending checklist: baseline/reset all counters; primary pointerdown selection of each required fixture and nested text; verify no click/checkbox/submit/focus-input/drag/hash outcome changes; compare page-capture observations separately; exercise custom pointer-move controls and note any page-established pointer-capture limitation; hover A/B/C without replacing A; move over indicator and click Exit; scroll page and nested scroller; repeat activate/select/Escape and visible exit; verify no page mutation and normal browsing after exit.
 
-Completion gate: Required AC2 fixtures and selection invariants pass in the explicit installed-Chrome manual safety gate. No measurement phase begins with an unaccepted safety failure. If browser access or a required safety property is unavailable, mark Blocked and name the affected gate.
-Evidence: Not run.
+Completion gate: Required AC2 fixtures and selection invariants must pass in the explicit installed-Chrome manual safety gate. No measurement phase begins with an unaccepted safety failure. If browser access or a required safety property is unavailable, mark Blocked and name the affected gate.
+Evidence: In progress — implementation/static evidence recorded above; mandatory manual gate not run.
 
-Phase exit gate: Fresh `pnpm check`, `pnpm build`, and focused unit checks pass, the mandatory installed-Chrome safety check is recorded, and repeated activate/select/exit restores normal interactions without page mutation or duplicate sessions.
-Evidence: Not run.
+Phase exit gate: Fresh `pnpm check`, `pnpm build`, and `git diff --check` pass, the mandatory installed-Chrome safety check is recorded, and repeated activate/select/exit restores normal interactions without page mutation or duplicate sessions.
+Evidence: Pending manual safety gate.
 
 ## Phase 3 — Option-held measurement and resilient geometry
 
