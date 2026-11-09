@@ -22,7 +22,7 @@ Step statuses below are the authoritative execution record. A phase is complete 
 
 ### Proposed tooling and verification commands
 
-Step 1.1 adds the development/build/check scripts below; Step 1.2 adds only the lean unit-test script and any needed Vitest configuration. Preserve useful official scaffold scripts and expose these root aliases:
+Step 1.1 adds the development/build/check scripts below; Step 3.1 adds the lean unit-test script and any needed Vitest configuration when pure measurement code is introduced. Preserve useful official scaffold scripts and expose these root aliases:
 
 | Proposed root command | Intended implementation / proof |
 | --- | --- |
@@ -32,7 +32,7 @@ Step 1.1 adds the development/build/check scripts below; Step 1.2 adds only the 
 | `pnpm build` | Runs the production build in each application; WXT Chrome MV3 output is manually inspected, not assumed from a directory name. |
 | `pnpm test:unit` | Lean Vitest runner, primarily for pure geometry/formatting and only useful cheap state/disposal tests; no browser harness. |
 
-Focused Vitest invocations use `pnpm test:unit -- <file>` after the script exists. Expected source/test paths below are proposed additions, not observations about generated templates. Adapt template-dependent locations once in Step 1.1 and record the actual paths here; do not duplicate source trees to match guesses. Browser behavior is validated manually in installed Chrome; no Playwright, browser automation, browser test driver, helper/manifest-copy machinery, automatic Chromium/profile setup, or test-only host permission is planned.
+Focused Vitest invocations use `pnpm test:unit <file>` (or `pnpm exec vitest run <file>`) after the script exists. Expected source/test paths below are proposed additions, not observations about generated templates. Adapt template-dependent locations once in Step 1.1 and record the actual paths here; do not duplicate source trees to match guesses. Browser behavior is validated manually in installed Chrome; no Playwright, browser automation, browser test driver, helper/manifest-copy machinery, automatic Chromium/profile setup, or test-only host permission is planned.
 
 ## Phase overview and delivery boundary
 
@@ -99,11 +99,11 @@ Tasks:
 - [x] Add fixed-rectangle geometry examples from the spec, nested markup, scroll containers, moving/resizing targets, transforms, and removal controls. Keep fixture coordinates and reset state deterministic.
 - [x] Add link, form, checkbox, input, draggable, and custom pointer-down controls with observable action counters, focus, drag, submission, and navigation outcomes. Register page capture/bubble handlers before inspection can activate, including pointer-down controls and page capture events.
 - [x] Add simple observable counters/outcomes and a reset control so ordinary browsing behavior can be checked manually before suppression is implemented. Keep the fixture useful for detecting leaks without building a replacement browser test framework.
-- [x] Review the lean unit-test requirement and defer runner installation until Step 3.1 introduces pure measurement calculations; no empty test setup or dependency was added. Do not add Playwright, browser automation, test-driver endpoints, helper/manifest-copy machinery, extra test host permissions, or automatic browser/profile setup.
+- [x] Review the lean unit-test requirement and defer runner installation until Step 3.1 introduces pure measurement calculations; no empty test setup or dependency was added at this step. Do not add Playwright, browser automation, test-driver endpoints, helper/manifest-copy machinery, extra test host permissions, or automatic browser/profile setup.
 
 Verification:
 
-- Automated: `pnpm check` passed on 2026-11-05 and `pnpm build` passed on 2026-11-05; both include the playground TypeScript/build output. No `pnpm test:unit` runner was added because pure measurement code is deferred to Step 3.1; no browser harness is planned.
+- Automated: `pnpm check` passed on 2026-11-05 and `pnpm build` passed on 2026-11-05; both include the playground TypeScript/build output. The unit runner was intentionally deferred at this step and introduced with Step 3.1's pure measurement code; no browser harness is planned.
 - Manual: Pending explicit smoke in an ordinary installed Chrome tab. Start the deterministic playground with `pnpm dev:int`, exercise and reset every counter/outcome, then check the fixed geometry and dynamic controls, including page/nested scrolling. Confirm the fixture can reveal normal pointer-down and page-capture observations before inspection suppression is attempted. No automated UI or Chrome check is claimed.
 
 Completion gate: The Solid fixture has observable, resettable outcomes for normal actions and dynamic geometry, and manual smoke confirms it can detect those actions. Implementation is complete, but the gate remains open awaiting the user's manual fixture smoke; no browser harness or feature safety claim is required.
@@ -143,7 +143,7 @@ Tasks:
 
 Verification:
 
-- Automated: `pnpm check`, `pnpm build`, and `git diff --check` passed on 2026-11-09. Production-output inspection confirmed the CSS Module class mappings and preserved host overrides in `.output/chrome-mv3/content-scripts/inspect.css`; the manifest contains only `activeTab` and `scripting`, has no `default_popup`, `content_scripts`, or `host_permissions`, and exposes only `content-scripts/inspect.css` to `http://*/*` and `https://*/*` for `cssInjectionMode: 'ui'`. The generated top-document runtime file is `.output/chrome-mv3/content-scripts/inspect.js`. No unit runner or browser harness was added.
+- Automated: `pnpm check`, `pnpm build`, and `git diff --check` passed on 2026-11-09. Production-output inspection confirmed the CSS Module class mappings and preserved host overrides in `.output/chrome-mv3/content-scripts/inspect.css`; the manifest contains only `activeTab` and `scripting`, has no `default_popup`, `content_scripts`, or `host_permissions`, and exposes only `content-scripts/inspect.css` to `http://*/*` and `https://*/*` for `cssInjectionMode: 'ui'`. The generated top-document runtime file is `.output/chrome-mv3/content-scripts/inspect.js`. No browser harness was added; the focused unit runner was introduced later with Step 3.1 pure geometry.
 - Manual prerequisite: Step 1.2's deterministic-playground smoke remains pending, so the Phase 1 exit gate is still open and is not silently treated as satisfied.
 - Manual Step 2.1 check: Pending user-run Chrome verification. For development testing, stop/restart `pnpm dev` so WXT regenerates `.output/chrome-mv3-dev`; the currently generated dev output still reflects the starter popup/Google registration. Alternatively load a clean production output unpacked. WXT dev may add development-only permissions, so do not treat its manifest as an exact production-manifest check. Activate once and verify the indicator says selection is unavailable; activate again and verify it disappears; repeat rapid toggles; exit with Escape and the visible button; navigate and confirm there is no restoration; verify isolation in a second tab; activate on a restricted `chrome://` page and verify an extension-owned `!` badge and descriptive action title; inspect the clean production artifact for no broad host access. Record browser/OS/build versions and actual lifecycle/permission results. The CSS Module refactor also requires this visual/lifecycle recheck against the CSS-loaded production artifact; prior inline-style working evidence does not close that check.
 - Static limitation: WXT shadow event isolation stops events once they reach the shadow root, but cannot prevent page capture listeners that ran earlier. This is not a universal hostile-page safety claim; Escape remains the only page-level keyboard listener in this lifecycle step.
@@ -176,7 +176,7 @@ Implementation evidence: `apps/extension/lib/picking.ts`, `lib/selection.ts`, `l
 
 Verification:
 
-- Automated/static: No focused unit runner or browser automation was added. `pnpm check`, `pnpm build`, and `git diff --check` passed. Production artifact review confirmed only `activeTab`/`scripting`, no `default_popup`/`content_scripts`/`host_permissions`, and only the HTTP(S) `inspect.css` web-accessible resource. Static review covered native hit testing, primary pointer/mouse/click safety guards, composed-path UI exclusion, cleanup, and the absence of wheel interception. Counters/focus/navigation must remain unchanged during the manual selection procedure, and page content/attributes/styles must remain unchanged except extension-owned insertion.
+- Automated/static: The focused unit runner was added later for Step 3.1; no browser automation was added. `pnpm check`, `pnpm build`, and `git diff --check` passed. Production artifact review confirmed only `activeTab`/`scripting`, no `default_popup`/`content_scripts`/`host_permissions`, and only the HTTP(S) `inspect.css` web-accessible resource. Static review covered native hit testing, primary pointer/mouse/click safety guards, composed-path UI exclusion, cleanup, and the absence of wheel interception. Counters/focus/navigation must remain unchanged during the manual selection procedure, and page content/attributes/styles must remain unchanged except extension-owned insertion.
 - Manual safety gate: Pending user approval/access. Use installed macOS Chrome and the unmodified production build through Chrome's official Load unpacked flow. In the deterministic playground, first confirm counters/outcomes work normally, then select links, inputs, form controls, nested button content, draggable elements, and the custom pointer-down control. Exercise the pre-registered window capture observer, native page and nested scrolling, pointer movement over the extension UI, repeated visible/Escape exit, and ordinary browsing after exit. Record any earlier-handler or pointer-capture variants as unsupported rather than claiming universal event suppression.
 - Concise pending checklist: baseline/reset all counters; primary pointerdown selection of each required fixture and nested text; verify no click/checkbox/submit/focus-input/drag/hash outcome changes; compare page-capture observations separately; exercise custom pointer-move controls and note any page-established pointer-capture limitation; hover A/B/C without replacing A; move over indicator and click Exit; scroll page and nested scroller; repeat activate/select/Escape and visible exit; verify no page mutation and normal browsing after exit.
 
@@ -194,28 +194,30 @@ Review boundary: Geometry, measurement presentation, and invalidation; no page e
 
 ### Step 3.1 — Add pure rectangle measurement and formatting
 
-Status: Pending
+Status: Verified — pure implementation and automated gates passed; no browser gate required
 Requirements / acceptance: R5; AC6.
 Depends on: Phase 2.
 Review boundary: Pure geometry/formatting inside the extension; no DOM or framework dependency.
 
 Expected files:
 
-- `apps/extension/lib/geometry.ts`, `apps/extension/lib/format.ts`, `tests/unit/geometry.test.ts` — numeric contract and focused tests.
+- `apps/extension/lib/geometry.ts`, `apps/extension/lib/format.ts`, `tests/unit/geometry.test.ts`, `tests/unit/format.test.ts`, `vitest.config.ts` — numeric contract, formatting contract, and focused tests.
+- Root `package.json`, `pnpm-lock.yaml` — the scoped Vitest dependency and `pnpm test:unit` alias.
 
 Tasks:
 
-- [ ] Define a small rectangle input and discriminated result for axis gaps/touching, containment insets, and overlap. Keep this internal; no workspace package or public API is necessary.
-- [ ] Implement the spec's examples, reversed target order, vertical/diagonal separation, equality, shared-edge containment, touching, and fractional coordinates. Reject non-finite or ineligible dimensions at the input boundary without producing labels.
-- [ ] Format CSS-pixel labels to at most one decimal place, dropping trailing `.0` and avoiding negative-zero artifacts. No screen-density multiplication or diagonal Euclidean distance.
+- [x] Define a small readonly rectangle input and discriminated result for axis gaps/touching, containment insets, and overlap. Keep this internal; no workspace package or public API is necessary.
+- [x] Implement the spec's examples, reversed target order, vertical/diagonal separation, equality, shared-edge containment, touching, fractional and negative viewport coordinates. Reject non-finite or ineligible dimensions and overflowing derived edges at the input boundary without producing labels.
+- [x] Format CSS-pixel labels to at most one decimal place, dropping trailing `.0` and avoiding negative-zero artifacts. No screen-density multiplication or diagonal Euclidean distance.
+- [x] Add the minimal root Vitest runner with no DOM environment or browser harness.
 
 Verification:
 
-- Automated: `pnpm test:unit -- tests/unit/geometry.test.ts` asserts numeric relation/value outputs before checking strings. Run `pnpm check`; no browser gate is needed for this pure calculation step.
+- Automated: `pnpm exec vitest run tests/unit/geometry.test.ts` passed (23 geometry tests); `pnpm test:unit` passed (37 tests across 2 files). Numeric relation/value outputs are asserted before formatting strings. Geometry uses one documented absolute `1e-7` CSS-pixel edge-comparison tolerance for floating-roundoff-only equality/touching/containment decisions; only corresponding near-zero gaps/insets are clamped, while meaningful fractional distances retain full precision. `pnpm check`, `pnpm build`, and `git diff --check` passed on 2026-11-09. Vitest `5.1.0`; no browser gate is needed for this pure calculation step.
 - Manual: Not required for numerical correctness; visual interpretation is verified with rendering in Step 3.2.
 
-Completion gate: Every geometry-table example and boundary case passes; outputs cannot imply a negative distance or CSS margin/padding declaration.
-Evidence: Not run.
+Completion gate: Verified — every geometry-table example and boundary case passes; outputs cannot imply a negative distance or CSS margin/padding declaration. Step 3.2 and later remain Pending, and this does not claim the Phase 2 browser safety gate.
+Evidence: Verified — 37 pure geometry/formatting tests, root check/build, and diff check passed on 2026-11-09; geometry edge comparisons use the documented `1e-7` CSS-pixel numerical tolerance without rounding meaningful outputs.
 
 ### Step 3.2 — Connect Option state to restrained annotations
 
@@ -343,6 +345,6 @@ This table assigns ownership; execution results belong in the named step, not a 
 ## Deferred checks and accepted deviations
 
 - Accepted deviations: None. No waiver or permission to bypass a required check has been granted.
-- Required but unexecuted checks: Every lightweight unit and manual gate above, except the Step 1.1 scaffold check/build gate recorded above. Unavailable unpacked-extension access or the user's app must be recorded as blockers at execution time, not assumed available. No feature runtime checks have been run.
+- Required but unexecuted checks: The Step 3.1 lean unit suite and pure check/build gate are verified. Manual fixture, installed-Chrome safety/lifecycle, modifier, dynamic-layout, and production acceptance gates remain unexecuted. Unavailable unpacked-extension access or the user's app must be recorded as blockers at execution time, not assumed available. No browser feature runtime checks have been run.
 - Deliberately out of scope: Playwright and automated browser testing for this slice, browser harnesses/drivers, publication/store packaging acceptance, cross-browser/platform matrices, iframe/closed-shadow traversal, editing/undo, parent navigation, pinned/exported measurements, and dotted-guide controls. Broader automation is explicitly deferred by the user, not a waiver of manual behavior acceptance and not a required unperformed browser test. These items must not appear as accidentally skipped first-slice acceptance.
 - Research used for planning, not execution evidence: [WXT installation](https://wxt.dev/guide/installation), [WXT CLI](https://wxt.dev/api/cli/wxt), [runtime active-tab example](https://github.com/wxt-dev/examples/tree/main/examples/active-tab-content-script), [Vite create flow](https://vite.dev/guide/), [Chrome activeTab](https://developer.chrome.com/docs/extensions/develop/concepts/activeTab), and [Solid render](https://docs.solidjs.com/reference/rendering/render). Recheck selected versions before implementation; official unpacked production/dev loading in installed Chrome is the intended browser procedure.

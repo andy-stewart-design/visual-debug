@@ -14,6 +14,10 @@
     "dev:ext": "pnpm --filter @visual-debug/extension dev",
     "dev:int": "pnpm --filter playground dev",
     "check": "pnpm --filter @visual-debug/extension check && pnpm --filter playground check",
-    "build": "pnpm --filter @visual-debug/extension build && pnpm --filter playground build"
+    "build": "pnpm --filter @visual-debug/extension build && pnpm --filter playground build",
+    "test:unit": "vitest run"
+  },
+  "devDependencies": {
+    "vitest": "^5.1.0"
   }
 }
