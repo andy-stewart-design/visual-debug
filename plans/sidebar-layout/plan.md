@@ -100,11 +100,11 @@ Expected files:
 
 Tasks:
 
-- [ ] Add validated start, stop, query, and state reporting with tab/document/request identity; validate extension sender/top-frame boundaries and reject malformed operations without side effects.
-- [ ] Make start/stop idempotent and operations deterministic; preserve on-demand injection and current toolbar-toggle usability while updating both ends atomically.
-- [ ] Invalidate pending starts on stop, navigation, or teardown; dispose a session that finishes mounting after invalidation rather than merely hiding its late response.
-- [ ] Test missing receivers, denied injection, invalid replies, duplicate starts/stops, superseded requests, Escape disposal, and navigation during asynchronous creation using injected transports/session factories.
-- [ ] Satisfy the verification and completion gate below and record concise evidence.
+- [x] Add validated start, stop, query, and state reporting with tab/document/request identity; validate extension sender/top-frame boundaries and reject malformed operations without side effects.
+- [x] Make start/stop idempotent and operations deterministic; preserve on-demand injection and current toolbar-toggle usability while updating both ends atomically.
+- [x] Invalidate pending starts on stop, navigation, or teardown; dispose a session that finishes mounting after invalidation rather than merely hiding its late response.
+- [x] Test missing receivers, denied injection, invalid replies, duplicate starts/stops, superseded requests, Escape disposal, and navigation during asynchronous creation using injected transports/session factories.
+- [x] Satisfy the verification and completion gate below and record concise evidence.
 
 Verification:
 

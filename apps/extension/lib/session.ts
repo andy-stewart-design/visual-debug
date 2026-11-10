@@ -13,6 +13,7 @@ export type InspectionSession = {
 export async function createInspectionSession(
   ctx: ContentScriptContext,
   onDisposed: () => void,
+  signal?: AbortSignal,
 ): Promise<InspectionSession> {
   let disposed = false;
   let removeInvalidationListener: (() => void) | undefined;
@@ -24,6 +25,7 @@ export async function createInspectionSession(
   const dispose = () => {
     if (disposed) return;
     disposed = true;
+    signal?.removeEventListener('abort', dispose);
     window.removeEventListener('keydown', onKeyDown, true);
     tracking?.dispose();
     tracking = undefined;
@@ -52,8 +54,9 @@ export async function createInspectionSession(
   });
 
   try {
-    if (ctx.isInvalid) throw new Error('The inspection page context is no longer valid.');
+    if (ctx.isInvalid || signal?.aborted) throw new Error('The inspection page context is no longer valid.');
 
+    signal?.addEventListener('abort', dispose, { once: true });
     window.addEventListener('keydown', onKeyDown, true);
     removeInvalidationListener = ctx.onInvalidated(dispose);
     const mountedUi = await mountSessionUi(ctx, dispose, selection, modifiers.held);
