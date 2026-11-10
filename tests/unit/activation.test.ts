@@ -80,6 +80,27 @@ describe('activation transport', () => {
     expect(feedback).not.toHaveBeenCalled();
   });
 
+  it('passive reconciliation does not suppress successful toolbar feedback clearing', async () => {
+    const { page } = setup();
+    const held = deferred<InspectionResponse>();
+    let acknowledgement: InspectionResponse | undefined;
+    const feedback = vi.fn(async () => undefined);
+    const activation = createActivationController({ transport: {
+      async send(_tabId, request) {
+        const reply = await page.handle(request);
+        if (request.operation === 'start') { acknowledgement = reply; return held.promise; }
+        return reply;
+      }, inject: async () => undefined,
+    }, updateFeedback: feedback });
+    const starting = activation.start(3);
+    await vi.waitFor(() => expect(acknowledgement).toBeDefined());
+    await activation.query(3);
+    if (!acknowledgement) throw new Error('Missing startup acknowledgement');
+    held.resolve(acknowledgement);
+    await starting;
+    expect(feedback).toHaveBeenCalledExactlyOnceWith(3, undefined);
+  });
+
   it('reports denied injection and never claims active', async () => {
     const feedback = vi.fn(async () => undefined);
     const activation = createActivationController({ transport: {

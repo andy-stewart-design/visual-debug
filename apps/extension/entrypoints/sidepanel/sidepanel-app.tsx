@@ -6,21 +6,15 @@ import { useSidebarConnection } from './use-sidebar-connection';
 
 export default function SidepanelApp() {
   const connection = useSidebarConnection();
-  const canStop = () => {
-    const current = connection.view();
-    return current?.tabId !== undefined &&
-      (current.status === 'active' || current.status === 'pending');
-  };
-
   return (
     <Sidebar>
-      <SidebarStatus view={connection.view} connectionError={connection.connectionError} />
+      <SidebarStatus presentation={connection.presentation} />
       <SidebarInstructions />
       <SidebarControls
-        canStart={connection.view()?.canStart === true && connection.view()?.status !== 'pending'}
-        canStop={canStop()}
+        actions={() => connection.presentation().actions}
         onStart={connection.start}
         onStop={connection.stop}
+        onRefresh={connection.refresh}
       />
     </Sidebar>
   );

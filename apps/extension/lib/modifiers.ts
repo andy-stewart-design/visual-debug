@@ -69,11 +69,17 @@ export function createModifierController(onChange?: () => void): ModifierControl
     if (document.visibilityState !== 'visible') clear();
   };
 
+  const wheelOptions = { capture: true, passive: false } as const;
+  const onWheel = (event: WheelEvent) => {
+    if (!disposed && event.altKey) event.preventDefault();
+  };
+
   window.addEventListener('keydown', onKeyDown, true);
   window.addEventListener('keyup', onKeyUp, true);
   // Only actual window blur clears this state; descendant focus changes do not.
   window.addEventListener('blur', clear, false);
   document.addEventListener('visibilitychange', onVisibilityChange, true);
+  window.addEventListener('wheel', onWheel, wheelOptions);
 
   return {
     held,
@@ -84,6 +90,7 @@ export function createModifierController(onChange?: () => void): ModifierControl
       window.removeEventListener('keyup', onKeyUp, true);
       window.removeEventListener('blur', clear, false);
       document.removeEventListener('visibilitychange', onVisibilityChange, true);
+      window.removeEventListener('wheel', onWheel, wheelOptions);
       state = emptyState;
       setHeld(false);
     },

@@ -68,8 +68,10 @@ export function createActivationController(options: ActivationControllerOptions)
       queues.delete(tabId);
     }
     const issuedEpoch = epoch(tabId);
-    const observation = (observations.get(tabId) ?? 0) + 1;
-    observations.set(tabId, observation);
+    // Read-only reconciliation neither writes toolbar feedback nor supersedes
+    // a mutation's ability to clear its previous error badge after success.
+    const observation = (observations.get(tabId) ?? 0) + (operation === 'query' ? 0 : 1);
+    if (operation !== 'query') observations.set(tabId, observation);
     const guard = () => { if (issuedEpoch !== epoch(tabId)) throw new InspectionSupersededError(); };
     const feedback = async (error?: string) => {
       if (operation === 'query' || issuedEpoch !== epoch(tabId) || observation !== observations.get(tabId)) return;

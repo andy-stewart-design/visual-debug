@@ -5,8 +5,9 @@ import { makeRequest, type InspectionResponse, type InspectionState } from '../.
 
 function deferred<T>() {
   let resolve!: (value: T) => void;
-  const promise = new Promise<T>((res) => { resolve = res; });
-  return { promise, resolve };
+  let reject!: (reason?: unknown) => void;
+  const promise = new Promise<T>((res, rej) => { resolve = res; reject = rej; });
+  return { promise, resolve, reject };
 }
 function session(onDisposed?: () => void): ControllerSession {
   let disposed = false;
@@ -134,6 +135,19 @@ describe('sidebar controller', () => {
     expect(activation.start).toHaveBeenCalledWith(7, { allowInjection: false });
   });
 
+  it('clears a query error when a matching retry succeeds', async () => {
+    const { controller, activation, connect } = setup();
+    const { connection, views } = connect();
+    await tick();
+    activation.query.mockRejectedValueOnce(new Error('temporary transport failure'));
+    await controller.command(1, connection.id, 'query');
+    expect(views.at(-1)?.status).toBe('error');
+    await controller.command(1, connection.id, 'start');
+    expect(activation.start).toHaveBeenCalledWith(7, { allowInjection: false });
+    expect(views.at(-1)?.status).toBe('active');
+    expect(views.at(-1)?.error).toBeUndefined();
+  });
+
   it('resolves the active tab on each command and does not autoactivate on switching', async () => {
     const { controller, activation, active, connect } = setup();
     const { connection, views } = connect();
@@ -160,6 +174,40 @@ describe('sidebar controller', () => {
     await oldRefresh;
     expect(views.at(-1)?.tabId).toBe(8);
     expect(views.at(-1)?.status).toBe('inactive');
+  });
+
+  it('does not let a delayed tab failure replace the newly active tab', async () => {
+    const { controller, activation, active, connect } = setup();
+    const { views } = connect();
+    await tick();
+    const pending = deferred<InspectionResponse>();
+    activation.query.mockImplementationOnce(() => pending.promise);
+    const oldRefresh = controller.refresh(1);
+    await vi.waitFor(() => expect(activation.query).toHaveBeenCalledTimes(2));
+    active.set(1, 8);
+    await controller.refresh(1);
+    pending.reject(new Error('old tab failed'));
+    await oldRefresh;
+    expect(views.at(-1)?.tabId).toBe(8);
+    expect(views.at(-1)?.status).toBe('inactive');
+    expect(views.at(-1)?.error).toBeUndefined();
+  });
+
+  it('does not let a delayed query failure hide acknowledged Escape state', async () => {
+    const { controller, activation, connect } = setup();
+    const { views } = connect();
+    await tick();
+    const pending = deferred<InspectionResponse>();
+    activation.query.mockImplementationOnce(() => pending.promise);
+    const oldRefresh = controller.refresh(1);
+    await vi.waitFor(() => expect(activation.query).toHaveBeenCalledTimes(2));
+    await controller.stateChanged(state(7, 'active', 2), { tabId: 7, windowId: 1 });
+    await controller.stateChanged(state(7, 'inactive', 3), { tabId: 7, windowId: 1 });
+    pending.reject(new Error('stale query failed'));
+    await oldRefresh;
+    expect(views.at(-1)?.status).toBe('inactive');
+    expect(views.at(-1)?.state?.revision).toBe(3);
+    expect(views.at(-1)?.error).toBeUndefined();
   });
 
   it('old connections cannot issue commands or disconnect replacements', async () => {
@@ -276,6 +324,23 @@ describe('sidebar controller', () => {
     expect(views.at(-1)?.state?.identity.documentId).toBe('replacement');
   });
 
+  it('does not accept an old-document event during navigation reconciliation', async () => {
+    const { controller, activation, connect } = setup();
+    const { views } = connect();
+    await tick();
+    await controller.stateChanged(state(7, 'active', 2), { tabId: 7, windowId: 1 });
+    const replacement = deferred<InspectionResponse>();
+    activation.query.mockImplementation(() => replacement.promise);
+    const navigating = controller.navigated(7, 1);
+    await vi.waitFor(() => expect(activation.query).toHaveBeenCalledTimes(2));
+    const staleEvent = controller.stateChanged(state(7, 'active', 99, 'old-document'), { tabId: 7, windowId: 1 });
+    await vi.waitFor(() => expect(activation.query).toHaveBeenCalledTimes(3));
+    replacement.resolve(response(state(7, 'inactive', 0, 'new-document')));
+    await Promise.all([navigating, staleEvent]);
+    expect(views.at(-1)?.status).toBe('inactive');
+    expect(views.at(-1)?.state?.identity.documentId).toBe('new-document');
+  });
+
   it('rejects mismatched senders and never renders hidden tabs as current', async () => {
     const { controller, connect } = setup();
     const { views } = connect();
@@ -285,11 +350,149 @@ describe('sidebar controller', () => {
     expect(views.at(-1)?.tabId).toBe(7);
   });
 
+  it('rechecks the acknowledgement after the failure-render active-tab lookup', async () => {
+    const { controller, activation, getActiveTab, connect } = setup();
+    const { views } = connect();
+    await tick();
+    const lookup = deferred<{ id: number; windowId: number }>();
+    let reads = 0;
+    getActiveTab.mockImplementation(async () => ++reads === 2 ? lookup.promise : { id: 7, windowId: 1 });
+    activation.query.mockRejectedValueOnce(new Error('old transport failure'));
+    const refreshing = controller.refresh(1);
+    await vi.waitFor(() => expect(reads).toBe(2));
+    await controller.stateChanged(state(7, 'active', 10), { tabId: 7, windowId: 1 });
+    lookup.resolve({ id: 7, windowId: 1 });
+    await refreshing;
+    expect(views.at(-1)?.status).toBe('active');
+    expect(views.at(-1)?.error).toBeUndefined();
+  });
+
+  it('shows toolbar startup failures rather than leaving the sidebar pending', async () => {
+    const { controller, activation, connect } = setup();
+    const { views } = connect();
+    await tick();
+    activation.start.mockRejectedValueOnce(new Error('injection denied'));
+    await expect(controller.openAndStart(1, 7, async () => undefined)).rejects.toThrow('injection denied');
+    expect(views.at(-1)?.status).toBe('error');
+    expect(views.at(-1)?.error).toBe('injection denied');
+  });
+
+  it('cannot restore an old document from a query issued before navigation', async () => {
+    const { controller, activation, pages, connect, factory } = setup();
+    const { views } = connect();
+    await tick();
+    const oldQuery = deferred<InspectionResponse>();
+    activation.query.mockImplementationOnce(() => oldQuery.promise);
+    const refreshing = controller.refresh(1);
+    await vi.waitFor(() => expect(activation.query).toHaveBeenCalledTimes(2));
+    pages.set(7, createInspectionController({ tabId: 7, documentId: 'replacement', createSession: factory }));
+    await controller.navigated(7, 1);
+    oldQuery.resolve(response(state(7, 'active', 999)));
+    await refreshing;
+    activation.query.mockClear();
+    await controller.stateChanged(state(7, 'active', 1, 'replacement'), { tabId: 7, windowId: 1 });
+    expect(activation.query).not.toHaveBeenCalled();
+    expect(views.at(-1)?.state?.identity.documentId).toBe('replacement');
+    expect(views.at(-1)?.status).toBe('active');
+  });
+
   it('stops a late active event after confirmed browser closure', async () => {
     const { controller, activation } = setup();
     await controller.close(1);
     activation.stop.mockClear();
     await controller.stateChanged(state(7, 'active', 20), { tabId: 7, windowId: 1 });
     expect(activation.stop).toHaveBeenCalledWith(7);
+  });
+
+  it('publishes the startup acknowledgement even if a passive refresh ran during startup', async () => {
+    const { controller, activation, pages, connect } = setup();
+    const { views } = connect();
+    await tick();
+    pages.delete(7);
+    await controller.navigated(7, 1);
+    const acknowledgement = deferred<InspectionResponse>();
+    activation.start.mockImplementationOnce(() => acknowledgement.promise);
+    const starting = controller.openAndStart(1, 7, async () => undefined);
+    await vi.waitFor(() => expect(activation.start).toHaveBeenCalledOnce());
+    activation.query.mockResolvedValueOnce(response(state(7, 'pending', 1, 'replacement')));
+    await controller.refresh(1);
+    expect(views.at(-1)?.status).toBe('pending');
+    acknowledgement.resolve(response(state(7, 'active', 2, 'replacement')));
+    await starting;
+    expect(views.at(-1)?.status).toBe('active');
+    expect(views.at(-1)?.state?.identity.documentId).toBe('replacement');
+  });
+
+  it('preserves a newer Escape event delivered before the replacement startup reply', async () => {
+    const { controller, activation, pages, factory, connect } = setup();
+    const { views } = connect();
+    await tick();
+    pages.delete(7);
+    await controller.navigated(7, 1);
+    let live!: ControllerSession;
+    factory.mockImplementation(async (onDisposed) => { live = session(onDisposed); return live; });
+    const events: Promise<void>[] = [];
+    const replacement = createInspectionController({
+      tabId: 7, documentId: 'replacement', createSession: factory,
+      onState: (next) => { events.push(controller.stateChanged(next, { tabId: 7, windowId: 1 })); },
+    });
+    pages.set(7, replacement);
+    activation.start.mockImplementationOnce(async () => {
+      const reply = await replacement.handle(makeRequest('start', 7, 'start-before-escape'));
+      live.dispose();
+      await Promise.all(events);
+      return reply;
+    });
+    await controller.openAndStart(1, 7, async () => undefined);
+    expect(replacement.getState().status).toBe('inactive');
+    expect(views.at(-1)?.status).toBe('inactive');
+    expect(views.at(-1)?.state?.revision).toBe(3);
+    expect(views.at(-1)?.canStart).toBe(true);
+  });
+
+  it('does not report an intentionally cancelled toolbar startup as an error', async () => {
+    const { controller, activation, connect } = setup();
+    const { connection, views } = connect();
+    await tick();
+    const pending = deferred<InspectionResponse>();
+    activation.start.mockImplementationOnce(() => pending.promise);
+    const starting = controller.openAndStart(1, 7, async () => undefined);
+    await vi.waitFor(() => expect(activation.start).toHaveBeenCalledOnce());
+    await controller.command(1, connection.id, 'stop');
+    pending.reject(new Error('The inspection operation was superseded.'));
+    await expect(starting).resolves.toBeUndefined();
+    expect(views.at(-1)?.status).toBe('inactive');
+    expect(views.at(-1)?.error).toBeUndefined();
+  });
+
+  it('recovers after reload when toolbar start and the new active event race reconciliation', async () => {
+    const { controller, activation, pages, factory, connect } = setup();
+    const { views } = connect();
+    await controller.openAndStart(1, 7, async () => undefined);
+    expect(views.at(-1)?.status).toBe('active');
+
+    pages.delete(7);
+    await controller.navigated(7, 1);
+    const creation = deferred<ControllerSession>();
+    factory.mockImplementation(async () => creation.promise);
+    const replacement = createInspectionController({
+      tabId: 7,
+      documentId: 'replacement',
+      createSession: factory,
+      onState: (next) => { void controller.stateChanged(next, { tabId: 7, windowId: 1 }); },
+    });
+    pages.set(7, replacement);
+    activation.query.mockRejectedValue(new Error('Receiving end does not exist.'));
+    activation.start.mockImplementation(async () => replacement.handle(makeRequest('start', 7, 'toolbar-start')));
+
+    const starting = controller.openAndStart(1, 7, async () => undefined);
+    await vi.waitFor(() => expect(replacement.getState().status).toBe('pending'));
+    creation.resolve(session());
+    await starting;
+    await vi.waitFor(() => expect(views.at(-1)?.state?.status).toBe('active'));
+    expect(views.at(-1)?.status).toBe('active');
+    expect(views.at(-1)?.canStart).toBe(false);
+    expect(views.at(-1)?.state?.identity.documentId).toBe('replacement');
+    expect(views.at(-1)?.error).toBeUndefined();
   });
 });

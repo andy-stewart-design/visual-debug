@@ -5,16 +5,29 @@ import {
   validateSidebarView,
   type SidebarView,
 } from '../../lib/sidebar-controller';
+import {
+  acceptSidebarView,
+  beginSidebarCommand,
+  beginSidebarConnection,
+  createSidebarState,
+  failSidebarConnection,
+  getSidebarPresentation,
+  retireSidebarConnection,
+  setSidebarWindow,
+  type SidebarCommand,
+  type SidebarPresentation,
+} from '../../lib/sidebar-state';
 
 type SidebarPort = ReturnType<typeof browser.runtime.connect>;
 type StateMessage = { kind: 'state'; view: unknown };
-type CommandOperation = 'start' | 'stop' | 'query';
 
 export type SidebarConnection = {
   view: Accessor<SidebarView | undefined>;
+  presentation: Accessor<SidebarPresentation>;
   connectionError: Accessor<string | undefined>;
   start: () => void;
   stop: () => void;
+  refresh: () => void;
 };
 
 function isStateMessage(value: unknown): value is StateMessage {
@@ -23,22 +36,17 @@ function isStateMessage(value: unknown): value is StateMessage {
 }
 
 export function useSidebarConnection(): SidebarConnection {
-  const [view, setView] = createSignal<SidebarView | undefined>();
-  const [connectionError, setConnectionError] = createSignal<string | undefined>();
+  const [model, setModel] = createSignal(createSidebarState());
 
   let disposed = false;
   let windowId: number | undefined;
   let currentPort: SidebarPort | undefined;
+  let currentEpoch = 0;
+  let nextToken = 0;
   let detachCurrentListeners: (() => void) | undefined;
   let reconnectTimer: ReturnType<typeof setTimeout> | undefined;
   let heartbeatTimer: ReturnType<typeof setInterval> | undefined;
   let retryAttempt = 0;
-
-  const setPending = () => {
-    if (windowId !== undefined) {
-      setView({ windowId, status: 'pending', canStart: false });
-    }
-  };
 
   const clearHeartbeat = () => {
     if (heartbeatTimer !== undefined) {
@@ -78,12 +86,12 @@ export function useSidebarConnection(): SidebarConnection {
 
   const retire = (port: SidebarPort, error?: string) => {
     if (currentPort !== port) return;
+    const guard = { epoch: currentEpoch, token: nextToken };
     currentPort = undefined;
     detachCurrentListeners?.();
     detachCurrentListeners = undefined;
     clearHeartbeat();
-    if (error !== undefined) setConnectionError(error);
-    setPending();
+    setModel((state) => retireSidebarConnection(state, guard, error));
     try {
       port.disconnect();
     } catch {
@@ -96,18 +104,44 @@ export function useSidebarConnection(): SidebarConnection {
     if (windowId === undefined || currentPort !== port) return;
     if (!post(port, { kind: 'ready', windowId })) return;
     startHeartbeat(port);
+    // Reopen/reconnect always reconciles with the background; it never starts.
     post(port, { kind: 'command', operation: 'query' });
+  };
+
+  const identifyWindow = (port: SidebarPort) => {
+    void Promise.resolve()
+      .then(() => browser.windows.getCurrent())
+      .then((window) => {
+        if (disposed || currentPort !== port) return;
+        const id = window.id;
+        if (id === undefined) throw new Error('The sidebar window could not be identified.');
+        windowId = id;
+        setModel((state) => setSidebarWindow(state, id));
+        sendReadyAndQuery(port);
+      })
+      .catch((error: unknown) => {
+        if (disposed || currentPort !== port) return;
+        retire(port, error instanceof Error ? error.message : 'The sidebar window could not be identified.');
+      });
   };
 
   const connect = () => {
     if (disposed || currentPort !== undefined) return;
-    setPending();
+    if (reconnectTimer !== undefined) {
+      clearTimeout(reconnectTimer);
+      reconnectTimer = undefined;
+    }
+    const epoch = ++currentEpoch;
+    const token = ++nextToken;
+    const guard = { epoch, token };
+    setModel((state) => beginSidebarConnection(state, guard));
+
     let port: SidebarPort;
     try {
       port = browser.runtime.connect({ name: SIDEBAR_PORT });
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Unable to connect to the background.';
-      setConnectionError(message);
+      setModel((state) => failSidebarConnection(state, message, guard));
       scheduleReconnect();
       return;
     }
@@ -118,8 +152,7 @@ export function useSidebarConnection(): SidebarConnection {
       const next = validateSidebarView(message.view);
       if (next === undefined || windowId === undefined || next.windowId !== windowId) return;
       retryAttempt = 0;
-      setConnectionError(undefined);
-      setView(next);
+      setModel((state) => acceptSidebarView(state, next, guard));
     };
     const onDisconnect = () => {
       retire(port);
@@ -132,45 +165,39 @@ export function useSidebarConnection(): SidebarConnection {
       port.onDisconnect.removeListener(onDisconnect);
     };
     if (windowId !== undefined) sendReadyAndQuery(port);
+    else identifyWindow(port);
   };
 
-  const sendCommand = (operation: CommandOperation) => {
+  const sendCommand = (operation: SidebarCommand) => {
     const port = currentPort;
     if (port === undefined || windowId === undefined) return;
-    setView((previous: SidebarView | undefined) => previous === undefined
-      ? previous
-      : { ...previous, status: 'pending', canStart: false, error: undefined });
-    if (!post(port, { kind: 'command', operation })) {
-      setConnectionError('The sidebar could not send that command.');
-    }
+    const next = beginSidebarCommand(model(), operation);
+    if (next === model()) return;
+    setModel(next);
+    // post retires the matching port and records its error if sending fails.
+    post(port, { kind: 'command', operation });
   };
 
   const start = () => {
-    if (view()?.canStart !== true || view()?.status === 'pending') return;
+    if (!getSidebarPresentation(model()).actions.canStart) return;
     sendCommand('start');
   };
 
   const stop = () => {
-    const current = view();
-    if (current?.tabId === undefined || (current.status !== 'active' && current.status !== 'pending')) return;
+    if (!getSidebarPresentation(model()).actions.canStop) return;
     sendCommand('stop');
   };
 
-  onMount(() => {
-    connect();
-    void Promise.resolve()
-      .then(() => browser.windows.getCurrent())
-      .then((window) => {
-        if (disposed || window.id === undefined) throw new Error('The sidebar window could not be identified.');
-        windowId = window.id;
-        setPending();
-        if (currentPort !== undefined) sendReadyAndQuery(currentPort);
-      })
-      .catch((error: unknown) => {
-        if (disposed) return;
-        setConnectionError(error instanceof Error ? error.message : 'The sidebar window could not be identified.');
-      });
-  });
+  const refresh = () => {
+    if (currentPort === undefined) {
+      // A retry only reconnects. The new port will issue its normal query.
+      connect();
+      return;
+    }
+    sendCommand('query');
+  };
+
+  onMount(connect);
 
   onCleanup(() => {
     disposed = true;
@@ -189,5 +216,12 @@ export function useSidebarConnection(): SidebarConnection {
     }
   });
 
-  return { view, connectionError, start, stop };
+  return {
+    view: () => getSidebarPresentation(model()).view,
+    presentation: () => getSidebarPresentation(model()),
+    connectionError: () => model().connectionError,
+    start,
+    stop,
+    refresh,
+  };
 }

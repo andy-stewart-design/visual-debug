@@ -1,11 +1,13 @@
 .actions {
   display: flex;
+  flex-wrap: wrap;
   gap: 8px;
   margin-top: 20px;
 }
 
 .primary,
-.secondary {
+.secondary,
+.refresh {
   flex: 1;
   min-height: 38px;
   padding: 8px 10px;
@@ -23,8 +25,13 @@
   color: white;
 }
 
+.refresh {
+  flex-basis: 100%;
+}
+
 .primary:disabled,
-.secondary:disabled {
+.secondary:disabled,
+.refresh:disabled {
   cursor: not-allowed;
   opacity: .5;
 }
