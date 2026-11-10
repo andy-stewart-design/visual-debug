@@ -1,0 +1,4 @@
+# Approved changes
+
+- **Firefox test target and manual ownership:** the user said "dev edition is fine" and "i do all manual checks". The bounded Firefox runtime target is therefore Firefox Developer Edition, not stable Firefox, and all manual browser verification belongs to the user. Spec/overview/plan wording now reflects this; Developer Edition results must not be represented as stable-Firefox coverage.
+- **Step 0.1 prerequisite repair:** after the reported Firefox startup error was confirmed as a Manifest V2 `browserAction` versus Manifest V3 `action` mismatch, the assistant asked to add a small prerequisite fix and regression test before continuing. The user answered "yes". Step 0.1 now includes the shared API resolver, both existing consumers, focused tests, and repeat deterministic checks. No sidebar implementation, manifest-version change, permission expansion, or waiver of runtime verification was approved.

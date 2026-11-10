@@ -1,5 +1,7 @@
 import { browser } from 'wxt/browser';
+import { resolveActionApi } from './action-api';
 
+const action = resolveActionApi(browser);
 const TOGGLE_MESSAGE = 'visual-debug:toggle-inspection';
 const NEUTRAL_TITLE = 'Toggle inspection session';
 const queues = new Map<number, Promise<void>>();
@@ -55,13 +57,13 @@ async function updateActionFeedback(
   error: string | undefined,
 ): Promise<void> {
   try {
-    await browser.action.setBadgeText({ tabId, text: error ? '!' : '' });
+    await action.setBadgeText({ tabId, text: error ? '!' : '' });
   } catch (feedbackError) {
     console.warn('Unable to update inspection badge.', feedbackError);
   }
 
   try {
-    await browser.action.setTitle({
+    await action.setTitle({
       tabId,
       title: error ? `Inspection unavailable: ${error}` : NEUTRAL_TITLE,
     });
