@@ -1,0 +1,14 @@
+.title {
+  margin: 22px 0 6px;
+  font-size: 15px;
+}
+
+.instructions {
+  margin: 8px 0;
+  padding-left: 22px;
+}
+
+.hint {
+  margin: 8px 0;
+  color: #475569;
+}

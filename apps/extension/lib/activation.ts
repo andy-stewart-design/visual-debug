@@ -8,7 +8,7 @@ import {
   validateInspectionResponse,
 } from './inspection-protocol';
 
-const NEUTRAL_TITLE = 'Toggle inspection session';
+const NEUTRAL_TITLE = 'Open sidebar and start inspection';
 
 export interface ActivationTransport {
   send(tabId: number, message: InspectionRequest): Promise<unknown>;
@@ -22,7 +22,7 @@ export interface ActivationControllerOptions {
 }
 
 export interface ActivationController {
-  start(tabId: number): Promise<InspectionResponse>;
+  start(tabId: number, options?: { allowInjection?: boolean }): Promise<InspectionResponse>;
   stop(tabId: number): Promise<InspectionResponse>;
   query(tabId: number): Promise<InspectionResponse>;
   toggle(tabId: number): Promise<{ active: boolean }>;
@@ -59,7 +59,7 @@ export function createActivationController(options: ActivationControllerOptions)
     return next;
   };
 
-  const invoke = (tabId: number, operation: InspectionOperation): Promise<InspectionResponse> => {
+  const invoke = (tabId: number, operation: InspectionOperation, allowInjection = true): Promise<InspectionResponse> => {
     if (!Number.isSafeInteger(tabId) || tabId < 0) return Promise.reject(new Error('Invalid inspection tab ID.'));
     if (operation === 'stop') {
       epochs.set(tabId, epoch(tabId) + 1);
@@ -72,7 +72,7 @@ export function createActivationController(options: ActivationControllerOptions)
     observations.set(tabId, observation);
     const guard = () => { if (issuedEpoch !== epoch(tabId)) throw new InspectionSupersededError(); };
     const feedback = async (error?: string) => {
-      if (issuedEpoch !== epoch(tabId) || observation !== observations.get(tabId)) return;
+      if (operation === 'query' || issuedEpoch !== epoch(tabId) || observation !== observations.get(tabId)) return;
       try { await options.updateFeedback?.(tabId, error); } catch { /* feedback cannot change the operation outcome */ }
     };
     const send = async (request: InspectionRequest): Promise<InspectionResponse> => {
@@ -99,7 +99,7 @@ export function createActivationController(options: ActivationControllerOptions)
           current = await send(discovery);
         } catch (error) {
           guard();
-          if ((operation !== 'start' && operation !== 'toggle') || !isMissingReceiver(error)) throw error;
+          if (!allowInjection || (operation !== 'start' && operation !== 'toggle') || !isMissingReceiver(error)) throw error;
           await options.transport.inject(tabId);
           guard(); // A stop during injection must prevent the eventual start.
           current = await send(discovery);
@@ -121,7 +121,7 @@ export function createActivationController(options: ActivationControllerOptions)
   };
 
   return {
-    start: (tabId) => invoke(tabId, 'start'),
+    start: (tabId, startOptions) => invoke(tabId, 'start', startOptions?.allowInjection ?? true),
     stop: (tabId) => invoke(tabId, 'stop'),
     query: (tabId) => invoke(tabId, 'query'),
     toggle: async (tabId) => {

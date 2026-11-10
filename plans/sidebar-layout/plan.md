@@ -122,7 +122,8 @@ Review boundary: Small functional vertical slice, not a placeholder panel. Keep 
 
 Expected files:
 
-- `apps/extension/entrypoints/sidepanel/index.html`, `main.tsx`, `SidepanelApp.tsx` — new minimal Solid sidebar and bootstrap.
+- `apps/extension/entrypoints/sidepanel/index.html`, `main.tsx`, `sidepanel-app.tsx`, `use-sidebar-connection.ts` — minimal Solid sidebar, bootstrap, composition, and isolated connection lifecycle.
+- `apps/extension/components/sidebar/`, `sidebar-status/`, `sidebar-instructions/`, `sidebar-controls/` — modular presentation using `index.tsx` and `styles.module.css` in each component directory.
 - `apps/extension/lib/sidebar-browser.ts` — new browser-specific opening/lifetime adapter.
 - `apps/extension/lib/sidebar-controller.ts` — new window/tab ownership, lifecycle coordination, and state routing.
 - `apps/extension/entrypoints/background.ts`, `apps/extension/lib/activation.ts`, `apps/extension/wxt.config.ts` — toolbar integration, sender/target validation, and action metadata.
@@ -131,10 +132,11 @@ Expected files:
 
 Tasks:
 
-- [ ] Add the sidebar entrypoint and browser adapter; invoke gesture-dependent opening from the toolbar event without losing the browser's user-gesture context. Toolbar activation starts rather than toggles the current tab.
-- [ ] Route sidebar commands to its owning window's active tab, preserving per-tab state and preventing requests from controlling an unrelated window/tab.
-- [ ] Implement and test reliable close detection/shutdown in both browser APIs. Stop all retained sessions for the closing sidebar's window, invalidate queued/in-flight starts, and leave other windows unaffected; do not assume unload delivery alone is reliable.
-- [ ] Provide minimal real status, Start/restart, Stop, and toolbar-guidance controls. Query on reopen without auto-resume; denied access must not add host grants or leave partial page state.
+- [x] Add the sidebar entrypoint and browser adapter; invoke gesture-dependent opening from the toolbar event without losing the browser's user-gesture context. Toolbar activation starts rather than toggles the current tab.
+- [x] Route sidebar commands to its owning window's active tab, preserving per-tab state and preventing requests from controlling an unrelated window/tab.
+- [x] Implement and test reliable close detection/shutdown in both browser APIs. Stop all retained sessions for the closing sidebar's window, invalidate queued/in-flight starts, and leave other windows unaffected; do not assume unload delivery alone is reliable.
+- [x] Provide minimal real status, Start/restart, Stop, and toolbar-guidance controls. Query on reopen without auto-resume; denied access must not add host grants or leave partial page state.
+- [x] Apply the user-requested conventions refactor: kebab-case entrypoint, CSS Modules, independent status/instructions/controls components, and isolated connection lifecycle; preserve behavior and satisfy the existing deterministic checks, with approval and evidence recorded.
 - [ ] Test tab changes, stale replies, window isolation, repeated open/close, background reconnection, and delayed startup cancellation with fake services; perform the real-browser feasibility checks below.
 - [ ] Satisfy the verification and completion gate below and record concise evidence.
 
@@ -163,7 +165,8 @@ Review boundary: Sidebar presentation and lifecycle subscription/recovery; the o
 
 Expected files:
 
-- `apps/extension/entrypoints/sidepanel/SidepanelApp.tsx`, `style.css` — complete state-driven controls, instructions, and styling; new stylesheet.
+- `apps/extension/entrypoints/sidepanel/sidepanel-app.tsx`, `use-sidebar-connection.ts` — complete state-driven composition and UI connection integration.
+- `apps/extension/components/sidebar/`, `sidebar-status/`, `sidebar-instructions/`, `sidebar-controls/` — refine the existing modular controls, instructions, and CSS Modules; retain kebab-case component directories.
 - `apps/extension/lib/sidebar-state.ts` — new pure presentation/state transitions for focused tests.
 - `apps/extension/lib/sidebar-controller.ts` — subscriptions, reconciliation, and recovery integration.
 - `tests/unit/sidebar-state.test.ts`, `tests/unit/sidebar-controller.test.ts` — new presentation-state tests and expanded routing tests.

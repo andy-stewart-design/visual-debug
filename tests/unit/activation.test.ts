@@ -62,6 +62,24 @@ describe('activation transport', () => {
     expect(inject).toHaveBeenCalledTimes(1);
   });
 
+  it('forbids sidebar injection when a receiver disappears after initial discovery', async () => {
+    const inject = vi.fn(async () => undefined);
+    const activation = createActivationController({ transport: {
+      send: async () => { throw new Error('Receiving end does not exist.'); }, inject,
+    } });
+    await expect(activation.start(3, { allowInjection: false })).rejects.toThrow('Receiving end');
+    expect(inject).not.toHaveBeenCalled();
+  });
+
+  it('passive queries do not replace toolbar feedback with permission errors', async () => {
+    const feedback = vi.fn(async () => undefined);
+    const activation = createActivationController({ transport: {
+      send: async () => { throw new Error('Receiving end does not exist.'); }, inject: async () => undefined,
+    }, updateFeedback: feedback });
+    await expect(activation.query(3)).rejects.toThrow('Receiving end');
+    expect(feedback).not.toHaveBeenCalled();
+  });
+
   it('reports denied injection and never claims active', async () => {
     const feedback = vi.fn(async () => undefined);
     const activation = createActivationController({ transport: {
@@ -168,7 +186,7 @@ describe('activation transport', () => {
     expect(await second).toEqual({ active: false });
     runtime.send.mockImplementation((_tabId: number, request: InspectionRequest) => page.handle(request));
     enqueueToggle(3);
-    await vi.waitFor(() => expect(runtime.title).toHaveBeenCalledWith({ tabId: 3, title: 'Toggle inspection session' }));
+    await vi.waitFor(() => expect(runtime.title).toHaveBeenCalledWith({ tabId: 3, title: 'Open sidebar and start inspection' }));
     expect(page.getState().status).toBe('active');
     expect(runtime.send).toHaveBeenCalledWith(3, expect.objectContaining({ operation: 'toggle' }), { frameId: 0 });
   });

@@ -1,0 +1,30 @@
+.actions {
+  display: flex;
+  gap: 8px;
+  margin-top: 20px;
+}
+
+.primary,
+.secondary {
+  flex: 1;
+  min-height: 38px;
+  padding: 8px 10px;
+  border: 1px solid #64748b;
+  border-radius: 6px;
+  background: white;
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+}
+
+.primary {
+  border-color: #2563eb;
+  background: #2563eb;
+  color: white;
+}
+
+.primary:disabled,
+.secondary:disabled {
+  cursor: not-allowed;
+  opacity: .5;
+}

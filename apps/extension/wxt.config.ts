@@ -5,7 +5,7 @@ export default defineConfig({
   manifest: {
     permissions: ['activeTab', 'scripting'],
     action: {
-      default_title: 'Toggle inspection session',
+      default_title: 'Open sidebar and start inspection',
     },
   },
   hooks: {
