@@ -37,7 +37,7 @@ export interface SidebarPresentation {
 }
 
 export const MISSING_ACCESS_GUIDANCE =
-  'This page cannot be inspected here. Click the extension toolbar button to authorize and start this tab.';
+  'Allow this extension site access in the browser, then click Start (or the extension toolbar button). Browser-internal pages cannot be inspected.';
 
 export function createSidebarState(windowId?: number): SidebarState {
   return { windowId, epoch: 0 };

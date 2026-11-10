@@ -54,13 +54,20 @@ function message(error: unknown): string { return error instanceof Error ? error
 function missing(error: unknown): boolean {
   return ['Receiving end does not exist.', 'Could not establish connection. Receiving end does not exist.'].includes(message(error));
 }
-const GUIDANCE = 'Click the extension toolbar button to authorize and start this tab. Browser-internal pages cannot be inspected.';
+function accessDenied(error: unknown): boolean {
+  const text = message(error).toLowerCase();
+  return ['cannot access', 'permission denied', 'operation is insecure', 'missing host permission',
+    'extensions gallery cannot be scripted', 'restricted uri'].some((reason) => text.includes(reason));
+}
+const GUIDANCE = 'Allow this extension site access in the browser, then click Start (or the extension toolbar button). Browser-internal pages cannot be inspected.';
 
 export function createSidebarController(options: {
   activation: Pick<ActivationController, 'start' | 'stop' | 'query'>;
   getActiveTab(windowId: number): Promise<Tab | undefined>;
   getTabs(windowId: number): Promise<Tab[]>;
   getTab(tabId: number): Promise<Tab | undefined>;
+  /** Confirm an existing browser-managed HTTP(S) host grant. Never requests it. */
+  canInject?: (tabId: number) => Promise<boolean>;
   readyTimeoutMs?: number;
 }) {
   const windows = new Map<number, WindowRecord>();
@@ -124,6 +131,34 @@ export function createSidebarController(options: {
     value.reconciling.delete(tab);
     return state;
   };
+  const showMissingReceiver = async (
+    id: number, tab: number, epoch: number, version: number, acknowledged?: InspectionState,
+  ): Promise<boolean> => {
+    const value = get(id);
+    if (!current(value, epoch) || value.viewVersion !== version) return false;
+    let granted = false;
+    try { granted = await options.canInject?.(tab) ?? false; } catch { granted = false; }
+    if (!current(value, epoch) || value.viewVersion !== version) return false;
+    let active: Tab | undefined;
+    try { active = await options.getActiveTab(id); } catch { return false; }
+    if (!current(value, epoch) || value.viewVersion !== version || active?.id !== tab || active.windowId !== id) return false;
+    const latest = value.known.get(tab);
+    if (latest !== acknowledged) {
+      if (latest) await render(id, tab, epoch, version, fromState(id, latest));
+      return false;
+    }
+    // A missing receiver means this document has no inspection state. Do not
+    // retain an older active state while deciding whether explicit Start may
+    // inject the script.
+    value.known.delete(tab);
+    value.owned.delete(tab);
+    if (granted) {
+      publish(value, { windowId: id, tabId: tab, status: 'inactive', canStart: true });
+      return true;
+    }
+    publish(value, { windowId: id, tabId: tab, status: 'unavailable', canStart: false, error: GUIDANCE });
+    return false;
+  };
   const showFailure = async (
     id: number, tab: number | undefined, epoch: number, version: number,
     error: unknown, acknowledged?: InspectionState,
@@ -143,7 +178,7 @@ export function createSidebarController(options: {
     }
     const view: SidebarView = {
       windowId: id, ...(tab === undefined ? {} : { tabId: tab }),
-      status: missing(error) ? 'unavailable' : 'error', canStart: false,
+      status: missing(error) || accessDenied(error) ? 'unavailable' : 'error', canStart: false,
       error: missing(error) ? GUIDANCE : message(error),
     };
     if (tab !== undefined) await render(id, tab, epoch, version, view, { acknowledged });
@@ -182,7 +217,10 @@ export function createSidebarController(options: {
       acknowledged = value.known.get(tab.id);
       const state = await query(id, tab.id, epoch);
       if (state) await render(id, tab.id, epoch, version, fromState(id, state));
-    } catch (error) { await showFailure(id, tab?.id, epoch, version, error, acknowledged); }
+    } catch (error) {
+      if (tab && missing(error)) await showMissingReceiver(id, tab.id, epoch, version, acknowledged);
+      else await showFailure(id, tab?.id, epoch, version, error, acknowledged);
+    }
   };
   const connect = (id: number, callback: (view: SidebarView) => void) => {
     const value = get(id);
@@ -213,6 +251,8 @@ export function createSidebarController(options: {
     publish(value, { windowId: id, tabId: tab, status: 'pending', canStart: false });
     const previous = value.known.get(tab);
     try {
+      // Keep uncertain startup ownership until acknowledged or stopped: a
+      // transport failure alone does not prove the page session wasn't created.
       const response = await options.activation.start(tab, { allowInjection });
       if (!current(value, epoch, connection) || !value.pending.has(pending)) return;
       // A toolbar start includes activation's fresh document discovery. Its
@@ -263,19 +303,41 @@ export function createSidebarController(options: {
         const pending: Pending = { tabId: active.id };
         value.pending.add(pending);
         try {
-          const state = await query(id, active.id, epoch);
-          if (!state || state.status === 'unavailable') return;
+          let state: InspectionState | undefined;
+          let missingError: unknown;
+          try { state = await query(id, active.id, epoch); }
+          catch (error) {
+            if (!missing(error)) throw error;
+            missingError = error;
+          }
+          if ((!state && missingError === undefined) || state?.status === 'unavailable') return;
+          // Only an explicit Start may use a confirmed host grant to inject.
+          // Check even with a receiver: navigation can remove it before start.
+          let allowInjection = false;
+          try { allowInjection = await options.canInject?.(active.id) ?? false; } catch { /* no grant */ }
+          const currentActive = await options.getActiveTab(id);
+          if (!current(value, epoch, token) || !value.pending.has(pending) ||
+            currentActive?.id !== active.id || currentActive.windowId !== id) return;
+          if (!state && !allowInjection) {
+            await showFailure(id, active.id, epoch, version, missingError, acknowledged);
+            return;
+          }
+          if (missingError !== undefined) value.reconciling.add(active.id);
           // Discovery may legitimately acknowledge a state before start. A
           // later start failure must be judged against that newer checkpoint,
           // not the state from before discovery.
           acknowledged = value.known.get(active.id);
-          await mutate(id, active.id, epoch, token, version, false, pending);
+          await mutate(id, active.id, epoch, token, version, allowInjection, pending);
         } finally {
           value.pending.delete(pending);
           if (![...value.pending].some((item) => item.tabId === pending.tabId)) value.deferredStates.delete(pending.tabId);
         }
       }
-    } catch (error) { await showFailure(id, active?.id, epoch, version, error, acknowledged); }
+    } catch (error) {
+      if (operation === 'stop' && active && missing(error)) {
+        await showMissingReceiver(id, active.id, epoch, version, acknowledged);
+      } else await showFailure(id, active?.id, epoch, version, error, acknowledged);
+    }
   };
   const openAndStart = async (id: number, tab: number, open: () => Promise<void>): Promise<void> => {
     const value = get(id);

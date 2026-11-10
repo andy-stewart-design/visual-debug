@@ -5,6 +5,7 @@ import { resolveActionApi } from '../lib/action-api';
 import { createSidebarBrowser, type SidebarBrowser } from '../lib/sidebar-browser';
 import { createSidebarController, SIDEBAR_PORT } from '../lib/sidebar-controller';
 import { isTabId, validateInspectionStateMessage } from '../lib/inspection-protocol';
+import { hasGrantedSiteAccess } from '../lib/site-access';
 
 function errorMessage(error: unknown): string { return error instanceof Error ? error.message : String(error); }
 function record(value: unknown): value is Record<string, unknown> { return typeof value === 'object' && value !== null; }
@@ -31,6 +32,7 @@ export default defineBackground(() => {
         throw error;
       }
     },
+    canInject: (tabId) => hasGrantedSiteAccess(browser, tabId),
   });
   type Port = ReturnType<typeof browser.runtime.connect>;
   type Connection = ReturnType<typeof controller.connect>;

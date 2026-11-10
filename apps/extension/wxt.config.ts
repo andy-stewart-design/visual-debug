@@ -3,6 +3,10 @@ import { defineConfig } from 'wxt';
 export default defineConfig({
   modules: ['@wxt-dev/module-solid'],
   manifest: {
+    // Persistent web access is intentionally limited to HTTP(S). WXT emits
+    // this as MV3 host_permissions and folds it into MV2 permissions for
+    // Firefox; no content script is registered by this declaration.
+    host_permissions: ['http://*/*', 'https://*/*'],
     permissions: ['activeTab', 'scripting'],
     action: {
       default_title: 'Open sidebar and start inspection',

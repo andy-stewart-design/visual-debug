@@ -32,13 +32,14 @@ function setup() {
   const getActiveTab = vi.fn(async (windowId: number) => tabs.get(active.get(windowId) ?? -1));
   const getTabs = vi.fn(async (windowId: number) => [...tabs.values()].filter((tab) => tab.windowId === windowId));
   const getTab = vi.fn(async (id: number) => tabs.get(id));
-  const controller = createSidebarController({ activation, getActiveTab, getTabs, getTab, readyTimeoutMs: 20 });
+  const canInject = vi.fn(async () => false);
+  const controller = createSidebarController({ activation, getActiveTab, getTabs, getTab, canInject, readyTimeoutMs: 20 });
   const connect = (windowId = 1) => {
     const views: SidebarView[] = [];
     const connection = controller.connect(windowId, (view) => views.push(view));
     return { views, connection };
   };
-  return { controller, activation, tabs, active, pages, factory, getActiveTab, getTabs, getTab, connect };
+  return { controller, activation, tabs, active, pages, factory, getActiveTab, getTabs, getTab, canInject, connect };
 }
 async function tick() { await new Promise((resolve) => setTimeout(resolve, 0)); }
 
@@ -112,6 +113,143 @@ describe('sidebar controller', () => {
     expect(activation.start).not.toHaveBeenCalled();
     expect(views.at(-1)?.status).toBe('unavailable');
     expect(views.at(-1)?.error).toContain('toolbar');
+  });
+
+  it('renders a granted ordinary tab as stopped without injecting during query', async () => {
+    const { controller, activation, pages, canInject, connect } = setup();
+    pages.delete(7);
+    canInject.mockResolvedValue(true);
+    const { views } = connect();
+    await vi.waitFor(() => expect(views.at(-1)?.status).toBe('inactive'));
+    expect(views.at(-1)?.canStart).toBe(true);
+    expect(activation.start).not.toHaveBeenCalled();
+  });
+
+  it('injects only after explicit Start confirms the host grant', async () => {
+    const { controller, activation, pages, canInject, connect } = setup();
+    pages.delete(7);
+    canInject.mockResolvedValue(true);
+    activation.start.mockImplementationOnce(async (tabId) => ({
+      ...response(state(tabId, 'active', 1)), operation: 'start',
+    }));
+    const { connection, views } = connect();
+    await vi.waitFor(() => expect(views.at(-1)?.status).toBe('inactive'));
+    await controller.command(1, connection.id, 'start');
+    expect(activation.start).toHaveBeenCalledWith(7, { allowInjection: true });
+  });
+
+  it('keeps a missing receiver unavailable and never starts without a grant', async () => {
+    const { controller, activation, pages, connect } = setup();
+    pages.delete(7);
+    const { connection, views } = connect();
+    await vi.waitFor(() => expect(views.at(-1)?.status).toBe('unavailable'));
+    await controller.command(1, connection.id, 'start');
+    expect(activation.start).not.toHaveBeenCalled();
+    expect(views.at(-1)?.status).toBe('unavailable');
+  });
+
+  it('ignores a delayed host check after the active tab changes', async () => {
+    const { controller, active, pages, canInject, connect } = setup();
+    pages.delete(7);
+    const check = deferred<boolean>();
+    canInject.mockReturnValueOnce(check.promise);
+    const { views } = connect();
+    await vi.waitFor(() => expect(canInject).toHaveBeenCalledOnce());
+    active.set(1, 8);
+    await controller.refresh(1);
+    check.resolve(true);
+    await tick();
+    expect(views.at(-1)?.tabId).toBe(8);
+    expect(views.at(-1)?.status).toBe('inactive');
+  });
+
+  it('does not let a delayed missing-receiver permission check overwrite a newer active acknowledgement', async () => {
+    const { controller, activation, canInject, connect } = setup();
+    const { views } = connect();
+    await tick();
+    const acknowledgement = deferred<InspectionResponse>();
+    activation.start.mockImplementationOnce(() => acknowledgement.promise);
+    const starting = controller.openAndStart(1, 7, async () => undefined);
+    await vi.waitFor(() => expect(activation.start).toHaveBeenCalledOnce());
+    const permission = deferred<boolean>();
+    canInject.mockReturnValueOnce(permission.promise);
+    activation.query.mockRejectedValueOnce(new Error('Receiving end does not exist.'));
+    const refreshing = controller.refresh(1);
+    await vi.waitFor(() => expect(canInject).toHaveBeenCalledOnce());
+    acknowledgement.resolve(response(state(7, 'active', 2)));
+    await starting;
+    permission.resolve(true);
+    await refreshing;
+    expect(views.at(-1)?.status).toBe('active');
+    expect(views.at(-1)?.state?.revision).toBe(2);
+  });
+
+  it('close cancels an explicit Start waiting for site-access confirmation', async () => {
+    const { controller, activation, pages, canInject, connect } = setup();
+    pages.delete(7);
+    const permission = deferred<boolean>();
+    canInject.mockImplementation(() => permission.promise);
+    const { connection } = connect();
+    await vi.waitFor(() => expect(canInject).toHaveBeenCalledOnce());
+    const starting = controller.command(1, connection.id, 'start');
+    await vi.waitFor(() => expect(canInject).toHaveBeenCalledTimes(2));
+    await controller.close(1);
+    permission.resolve(true);
+    await starting;
+    expect(activation.start).not.toHaveBeenCalled();
+  });
+
+  it('returns to stopped after cancelling startup before a granted receiver exists', async () => {
+    const { controller, activation, pages, canInject, connect } = setup();
+    pages.delete(7);
+    canInject.mockResolvedValue(true);
+    const { connection, views } = connect();
+    await vi.waitFor(() => expect(views.at(-1)?.status).toBe('inactive'));
+    await controller.command(1, connection.id, 'stop');
+    expect(views.at(-1)?.status).toBe('inactive');
+    expect(views.at(-1)?.canStart).toBe(true);
+    expect(activation.start).not.toHaveBeenCalled();
+  });
+
+  it('keeps protected HTTPS injection failures unavailable rather than active', async () => {
+    const { controller, activation, pages, canInject, connect } = setup();
+    pages.delete(7);
+    canInject.mockResolvedValue(true);
+    activation.start.mockRejectedValueOnce(new Error('The extensions gallery cannot be scripted.'));
+    const { connection, views } = connect();
+    await vi.waitFor(() => expect(views.at(-1)?.status).toBe('inactive'));
+    await controller.command(1, connection.id, 'start');
+    expect(views.at(-1)?.status).toBe('unavailable');
+    expect(views.at(-1)?.canStart).toBe(false);
+    expect(views.at(-1)?.error).toContain('gallery');
+  });
+
+  it('retains permission to inject across a receiver-disappearance race when a site grant exists', async () => {
+    const { controller, activation, canInject, connect } = setup();
+    canInject.mockResolvedValue(true);
+    const { connection } = connect();
+    await controller.command(1, connection.id, 'start');
+    expect(activation.start).toHaveBeenCalledWith(7, { allowInjection: true });
+  });
+
+  it('can restart a reloaded granted page from the sidebar without a toolbar action', async () => {
+    const { controller, activation, pages, canInject, factory, connect } = setup();
+    canInject.mockResolvedValue(true);
+    const { connection, views } = connect();
+    await controller.command(1, connection.id, 'start');
+    pages.get(7)?.dispose();
+    pages.delete(7);
+    await controller.navigated(7, 1);
+    expect(views.at(-1)?.status).toBe('inactive');
+    activation.start.mockImplementationOnce(async (tabId) => {
+      const page = createInspectionController({ tabId, documentId: 'reloaded', createSession: factory });
+      pages.set(tabId, page);
+      return page.handle(makeRequest('start', tabId, 'sidebar-restart'));
+    });
+    await controller.command(1, connection.id, 'start');
+    expect(views.at(-1)?.status).toBe('active');
+    expect(views.at(-1)?.state?.identity.documentId).toBe('reloaded');
+    expect(pages.get(7)?.getState().status).toBe('active');
   });
 
   it('a stop cancels a sidebar start whose initial discovery is still pending', async () => {

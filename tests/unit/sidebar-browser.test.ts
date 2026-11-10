@@ -125,6 +125,7 @@ const bridge = vi.hoisted(() => {
       onConnect: event(), onMessage: event() },
     tabs: { query: vi.fn(), get: vi.fn(), onActivated: event(), onUpdated: event(), onRemoved: event() },
     windows: { get: vi.fn(), onRemoved: event() },
+    permissions: { contains: vi.fn(async () => false) },
   };
   vi.stubGlobal('browser', api);
   return { api, chrome, firefox, tabs,
@@ -165,6 +166,7 @@ describe('background/sidebar composition with fake native APIs', () => {
     bridge.api.sidebarAction = undefined;
     bridge.chrome.open.mockResolvedValue(undefined);
     bridge.firefox.isOpen.mockResolvedValue(true);
+    bridge.api.permissions.contains.mockResolvedValue(false);
     bridge.api.tabs.query.mockImplementation(async (options: { windowId: number; active?: boolean }) =>
       bridge.tabs.filter((tab) => tab.windowId === options.windowId && (options.active === undefined || tab.active)));
     bridge.api.tabs.get.mockImplementation(async (id: number) => bridge.tabs.find((tab) => tab.id === id));
@@ -198,6 +200,39 @@ describe('background/sidebar composition with fake native APIs', () => {
     connected.receive({ kind: 'command', operation: 'start', windowId: 2, tabId: 9 });
     await vi.waitFor(() => expect(bridge.activation.start).toHaveBeenCalledWith(7, { allowInjection: false }));
     expect(bridge.activation.start).not.toHaveBeenCalledWith(9, expect.anything());
+  });
+
+  it('starts a new granted site directly from the sidebar without opening the toolbar', async () => {
+    bridge.api.permissions.contains.mockResolvedValue(true);
+    bridge.api.tabs.get.mockImplementation(async (id: number) => ({
+      ...bridge.tabs.find((tab) => tab.id === id), url: 'http://localhost:3000/playground',
+    }));
+    bridge.activation.query.mockRejectedValue(new Error('Receiving end does not exist.'));
+    background.main();
+    const connected = connectBridge();
+    await vi.waitFor(() => expect(connected.port.postMessage).toHaveBeenCalledWith(
+      expect.objectContaining({ view: expect.objectContaining({ status: 'inactive', canStart: true }) })));
+    expect(bridge.activation.start).not.toHaveBeenCalled();
+    expect(bridge.api.permissions.contains).toHaveBeenCalledWith({ origins: ['http://localhost/*'] });
+    connected.receive({ kind: 'command', operation: 'start' });
+    await vi.waitFor(() => expect(bridge.activation.start).toHaveBeenCalledWith(7, { allowInjection: true }));
+    await vi.waitFor(() => expect(connected.port.postMessage).toHaveBeenCalledWith(
+      expect.objectContaining({ view: expect.objectContaining({ status: 'active' }) })));
+    expect(bridge.chrome.open).not.toHaveBeenCalled();
+  });
+
+  it('does not inject into a new site if browser site access is withheld', async () => {
+    bridge.api.tabs.get.mockImplementation(async (id: number) => ({
+      ...bridge.tabs.find((tab) => tab.id === id), url: 'https://unapproved.test/',
+    }));
+    bridge.activation.query.mockRejectedValue(new Error('Receiving end does not exist.'));
+    background.main();
+    const connected = connectBridge();
+    await vi.waitFor(() => expect(connected.port.postMessage).toHaveBeenCalledWith(
+      expect.objectContaining({ view: expect.objectContaining({ status: 'unavailable', canStart: false }) })));
+    connected.receive({ kind: 'command', operation: 'start' });
+    await vi.waitFor(() => expect(bridge.api.permissions.contains).toHaveBeenCalledTimes(2));
+    expect(bridge.activation.start).not.toHaveBeenCalled();
   });
 
   it('uses the native Chrome close event to sweep only the closed window even after restart', async () => {
