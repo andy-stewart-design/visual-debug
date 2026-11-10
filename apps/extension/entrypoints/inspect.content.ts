@@ -4,10 +4,7 @@ import { defineContentScript } from 'wxt/utils/define-content-script';
 import { createInspectionSession } from '../lib/session';
 import {
   INSPECTION_STATE_MESSAGE,
-  LEGACY_TOGGLE_MESSAGE,
-  makeRequest,
   type InspectionState,
-  type LegacyToggleResponse,
   validateInspectionRequest,
   validateSender,
 } from '../lib/inspection-protocol';
@@ -48,22 +45,10 @@ export default defineContentScript({
     // not a promise which claims the response channel from another listener.
     const onMessage = (message: unknown, sender: Browser.runtime.MessageSender) => {
       if (shuttingDown || !validateSender(sender, browser.runtime.id)) return undefined;
-      const legacy = typeof message === 'object' && message !== null &&
-        'kind' in message && message.kind === LEGACY_TOGGLE_MESSAGE;
       const boundTabId = controller?.getState().identity.tabId;
-      const candidate = legacy
-        ? makeRequest('toggle', (message as { tabId?: number }).tabId ?? boundTabId ?? -1, randomId(),
-          (message as { documentId?: string }).documentId)
-        : message;
-      const request = validateInspectionRequest(candidate, boundTabId);
+      const request = validateInspectionRequest(message, boundTabId);
       if (!request) return undefined;
-      const result = ensureController(request.tabId).handle(request);
-      if (!legacy) return result;
-      return result.then((response): LegacyToggleResponse => ({
-        kind: LEGACY_TOGGLE_MESSAGE,
-        ok: response.ok,
-        ...(response.ok ? { active: response.state.status === 'active' } : { error: response.error ?? response.state.error }),
-      }));
+      return ensureController(request.tabId).handle(request);
     };
 
     browser.runtime.onMessage.addListener(onMessage);

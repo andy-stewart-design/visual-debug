@@ -59,7 +59,7 @@ export async function createInspectionSession(
     signal?.addEventListener('abort', dispose, { once: true });
     window.addEventListener('keydown', onKeyDown, true);
     removeInvalidationListener = ctx.onInvalidated(dispose);
-    const mountedUi = await mountSessionUi(ctx, dispose, selection, modifiers.held);
+    const mountedUi = await mountSessionUi(ctx, selection, modifiers.held);
     if (disposed || ctx.isInvalid) {
       mountedUi.remove();
       throw new Error('The inspection page context became invalid during startup.');

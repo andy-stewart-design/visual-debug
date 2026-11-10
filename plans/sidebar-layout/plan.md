@@ -179,8 +179,8 @@ Tasks:
 - [x] Disable conflicting pending actions and reconcile state on tab changes, Escape, navigation, reconnect, and reopen. Clear stale errors/results without treating a query or reopen as activation.
 - [x] Provide concise existing inspection/Option/Escape instructions and usable labeled controls without introducing selected-element metadata or editing.
 - [x] Add the user-approved non-passive Alt+wheel safeguard to page-session input ownership; verify Alt-only cancellation and cleanup without changing browser preferences or inactive-page behavior.
-- [ ] Add pure-state tests for each rendered state, actions, stale correlation, and recoverable failures; verify actual Solid UI wiring manually rather than treating pure-state tests as a DOM-rendering test.
-- [ ] Satisfy the verification and completion gate below and record concise evidence.
+- [x] Add pure-state tests for each rendered state, actions, stale correlation, and recoverable failures; verify actual Solid UI wiring manually rather than treating pure-state tests as a DOM-rendering test.
+- [x] Satisfy the verification and completion gate below and record concise evidence.
 
 Verification:
 
@@ -206,10 +206,10 @@ Expected files:
 
 Tasks:
 
-- [ ] Confirm Step 2.1 parity and search authored extension sources for indicator/legacy-toggle consumers before deleting them; update affected props/imports atomically.
-- [ ] Keep selection/measurement overlays and the Shadow host required by picking/tracking; remove controls, not the overlay host or cleanup boundary.
+- [x] Confirm Step 2.1 parity and search authored extension sources for indicator/legacy-toggle consumers before deleting them; update affected props/imports atomically.
+- [x] Keep selection/measurement overlays and the Shadow host required by picking/tracking; remove controls, not the overlay host or cleanup boundary.
 - [ ] Exercise sidebar resizing and modifier/focus transitions; make only necessary page-local fixes with focused regression tests in the same step.
-- [ ] Check the diff for accidental details/style-editing scope and for leftover legacy message consumers.
+- [x] Check the diff for accidental details/style-editing scope and for leftover legacy message consumers.
 - [ ] Satisfy the verification and completion gate below and record concise evidence.
 
 Verification:

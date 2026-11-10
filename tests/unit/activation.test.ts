@@ -8,7 +8,7 @@ const runtime = vi.hoisted(() => {
   });
   return api;
 });
-import { createActivationController, enqueueToggle, InspectionSupersededError, type ActivationTransport } from '../../apps/extension/lib/activation';
+import { createActivationController, inspectionActivation, InspectionSupersededError, type ActivationTransport } from '../../apps/extension/lib/activation';
 import { createInspectionController, type ControllerSession } from '../../apps/extension/lib/inspection-controller';
 import { type InspectionRequest, type InspectionResponse } from '../../apps/extension/lib/inspection-protocol';
 
@@ -199,17 +199,15 @@ describe('activation transport', () => {
     expect((await activation.start(3)).state.status).toBe('active');
   });
 
-  it('preserves serialized toolbar toggles and the actual enqueue consumer', async () => {
-    const { activation, page } = setup();
-    const first = activation.toggle(3);
-    const second = activation.toggle(3);
-    expect(await first).toEqual({ active: true });
-    expect(await second).toEqual({ active: false });
+  it('preserves idempotent toolbar starts and shared action feedback', async () => {
+    const { page } = setup();
     runtime.send.mockImplementation((_tabId: number, request: InspectionRequest) => page.handle(request));
-    enqueueToggle(3);
-    await vi.waitFor(() => expect(runtime.title).toHaveBeenCalledWith({ tabId: 3, title: 'Open sidebar and start inspection' }));
+    expect((await inspectionActivation.start(3)).state.status).toBe('active');
+    expect((await inspectionActivation.start(3)).state.status).toBe('active');
     expect(page.getState().status).toBe('active');
-    expect(runtime.send).toHaveBeenCalledWith(3, expect.objectContaining({ operation: 'toggle' }), { frameId: 0 });
+    expect(runtime.send).toHaveBeenCalledWith(3, expect.objectContaining({ operation: 'start' }), { frameId: 0 });
+    expect(runtime.title).toHaveBeenCalledWith({ tabId: 3, title: 'Open sidebar and start inspection' });
+    expect(runtime.badge).toHaveBeenCalledWith({ tabId: 3, text: '' });
   });
 
   it('allows explicit recovery before an obsolete startup response arrives', async () => {

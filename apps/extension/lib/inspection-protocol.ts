@@ -1,8 +1,6 @@
 export const INSPECTION_MESSAGE = 'visual-debug:inspection';
 export const INSPECTION_STATE_MESSAGE = 'visual-debug:inspection-state';
-export const LEGACY_TOGGLE_MESSAGE = 'visual-debug:toggle-inspection';
-
-export type InspectionOperation = 'start' | 'stop' | 'query' | 'toggle';
+export type InspectionOperation = 'start' | 'stop' | 'query';
 export type InspectionStatus = 'pending' | 'active' | 'inactive' | 'unavailable' | 'error';
 
 export interface InspectionIdentity {
@@ -42,13 +40,6 @@ export interface InspectionStateMessage {
   state: InspectionState;
 }
 
-export interface LegacyToggleResponse {
-  kind: typeof LEGACY_TOGGLE_MESSAGE;
-  ok: boolean;
-  active?: boolean;
-  error?: string;
-}
-
 export interface MessageSenderLike {
   id?: string;
   frameId?: number;
@@ -68,7 +59,7 @@ export function isTabId(value: unknown): value is number {
 }
 
 const INSPECTION_STATUSES: ReadonlySet<string> = new Set(['pending', 'active', 'inactive', 'unavailable', 'error']);
-const INSPECTION_OPERATIONS: ReadonlySet<string> = new Set(['start', 'stop', 'query', 'toggle']);
+const INSPECTION_OPERATIONS: ReadonlySet<string> = new Set(['start', 'stop', 'query']);
 
 export function isInspectionStatus(value: unknown): value is InspectionStatus {
   return typeof value === 'string' && INSPECTION_STATUSES.has(value);
@@ -138,19 +129,6 @@ function isInspectionStateMessage(value: unknown): value is InspectionStateMessa
 
 export function validateInspectionStateMessage(value: unknown): InspectionStateMessage | undefined {
   return isInspectionStateMessage(value) ? value : undefined;
-}
-
-function isLegacyToggleResponse(value: unknown): value is LegacyToggleResponse {
-  if (!isRecord(value) || value.kind !== LEGACY_TOGGLE_MESSAGE || typeof value.ok !== 'boolean') return false;
-  if (value.active !== undefined && typeof value.active !== 'boolean') return false;
-  if (value.error !== undefined && typeof value.error !== 'string') return false;
-  if (value.ok && typeof value.active !== 'boolean') return false;
-  if (!value.ok && !isNonEmptyString(value.error)) return false;
-  return true;
-}
-
-export function validateLegacyToggleResponse(value: unknown): LegacyToggleResponse | undefined {
-  return isLegacyToggleResponse(value) ? value : undefined;
 }
 
 export function makeRequest(operation: InspectionOperation, tabId: number, requestId: string, documentId?: string): InspectionRequest {

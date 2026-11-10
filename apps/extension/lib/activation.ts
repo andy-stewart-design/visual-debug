@@ -25,7 +25,6 @@ export interface ActivationController {
   start(tabId: number, options?: { allowInjection?: boolean }): Promise<InspectionResponse>;
   stop(tabId: number): Promise<InspectionResponse>;
   query(tabId: number): Promise<InspectionResponse>;
-  toggle(tabId: number): Promise<{ active: boolean }>;
 }
 
 export class InspectionSupersededError extends Error {
@@ -101,7 +100,7 @@ export function createActivationController(options: ActivationControllerOptions)
           current = await send(discovery);
         } catch (error) {
           guard();
-          if (!allowInjection || (operation !== 'start' && operation !== 'toggle') || !isMissingReceiver(error)) throw error;
+          if (!allowInjection || operation !== 'start' || !isMissingReceiver(error)) throw error;
           await options.transport.inject(tabId);
           guard(); // A stop during injection must prevent the eventual start.
           current = await send(discovery);
@@ -119,18 +118,13 @@ export function createActivationController(options: ActivationControllerOptions)
     };
     // Stops must reach the content controller while its factory is pending.
     // Queued starts capture the epoch at issuance, so stop cancels them too.
-    return operation === 'start' || operation === 'toggle' ? run(tabId, execute) : execute();
+    return operation === 'start' ? run(tabId, execute) : execute();
   };
 
   return {
     start: (tabId, startOptions) => invoke(tabId, 'start', startOptions?.allowInjection ?? true),
     stop: (tabId) => invoke(tabId, 'stop'),
     query: (tabId) => invoke(tabId, 'query'),
-    toggle: async (tabId) => {
-      const response = await invoke(tabId, 'toggle');
-      if (!response.ok) throw new Error(response.error ?? response.state.error ?? 'Inspection toggle failed.');
-      return { active: response.state.status === 'active' };
-    },
   };
 }
 
@@ -156,10 +150,3 @@ export const inspectionActivation = createActivationController({
   },
   updateFeedback: updateActionFeedback,
 });
-
-/** Preserve the existing background consumer until the sidebar replaces it. */
-export function enqueueToggle(tabId: number): void {
-  void inspectionActivation.toggle(tabId).catch((error) => {
-    console.error(`Inspection activation failed for tab ${tabId}: ${errorMessage(error)}`, error);
-  });
-}

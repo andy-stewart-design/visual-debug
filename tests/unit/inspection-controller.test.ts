@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { createInspectionController, type ControllerSession } from '../../apps/extension/lib/inspection-controller';
-import { INSPECTION_STATE_MESSAGE, LEGACY_TOGGLE_MESSAGE, makeRequest } from '../../apps/extension/lib/inspection-protocol';
+import { INSPECTION_STATE_MESSAGE, makeRequest } from '../../apps/extension/lib/inspection-protocol';
 
 const wiring = vi.hoisted(() => {
   const api = { addListener: vi.fn(), removeListener: vi.fn(), sendMessage: vi.fn(), createSession: vi.fn() };
@@ -26,7 +26,7 @@ function session(onDispose?: () => void): ControllerSession {
     dispose() { if (!disposed) { disposed = true; onDispose?.(); } },
   };
 }
-const request = (operation: 'start' | 'stop' | 'query' | 'toggle', id: string, documentId?: string) => makeRequest(operation, 7, id, documentId);
+const request = (operation: 'start' | 'stop' | 'query', id: string, documentId?: string) => makeRequest(operation, 7, id, documentId);
 const options = (createSession: (onDisposed: () => void, signal: AbortSignal) => Promise<ControllerSession>) => ({ tabId: 7, documentId: 'doc-a', createSession });
 
 describe('inspection controller', () => {
@@ -171,6 +171,7 @@ describe('actual content-script wiring', () => {
     expect(listener(request('start', 'foreign'), { id: 'other' })).toBeUndefined();
     expect(listener(request('start', 'frame'), { id: 'extension', frameId: 1 })).toBeUndefined();
     expect(listener(request('start', 'tab'), { id: 'extension', frameId: 0, tab: { id: 7 } })).toBeUndefined();
+    expect(listener({ ...request('start', 'retired'), operation: 'toggle' }, { id: 'extension' })).toBeUndefined();
     expect(wiring.createSession).not.toHaveBeenCalled();
     expect((await listener(request('start', 'real'), { id: 'extension' })).state.status).toBe('active');
     expect(wiring.createSession).toHaveBeenCalledTimes(1);
@@ -202,10 +203,4 @@ describe('actual content-script wiring', () => {
     expect(wiring.createSession).not.toHaveBeenCalled();
   });
 
-  it('retains legacy toggle response shape with an explicitly bound target', async () => {
-    const { listener } = setup();
-    const message = { kind: LEGACY_TOGGLE_MESSAGE, tabId: 7 };
-    expect(await listener(message, { id: 'extension' })).toEqual({ kind: LEGACY_TOGGLE_MESSAGE, ok: true, active: true });
-    expect(await listener(message, { id: 'extension' })).toEqual({ kind: LEGACY_TOGGLE_MESSAGE, ok: true, active: false });
-  });
 });

@@ -67,7 +67,7 @@ describe('sidebar controller', () => {
     await starting;
     expect(activation.start).toHaveBeenCalledWith(7, { allowInjection: true });
     await controller.openAndStart(1, 7, async () => undefined);
-    expect(activation.start).toHaveBeenCalledTimes(2); // content start is idempotent, never toggle
+    expect(activation.start).toHaveBeenCalledTimes(2); // content start is idempotent
   });
 
   it('does not start if opening fails or the panel never becomes ready', async () => {

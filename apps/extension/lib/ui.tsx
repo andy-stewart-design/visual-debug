@@ -19,7 +19,6 @@ export type SessionUi = {
 
 export async function mountSessionUi(
   ctx: ContentScriptContext,
-  onExit: () => void,
   selection: SelectionController,
   held: Accessor<boolean>,
 ): Promise<SessionUi> {
@@ -59,7 +58,7 @@ export async function mountSessionUi(
     ],
     onMount(uiContainer) {
       solidDispose = render(
-        () => <App onExit={onExit} selection={selection.state} held={held} />,
+        () => <App selection={selection.state} held={held} />,
         uiContainer,
       );
       return mounted;

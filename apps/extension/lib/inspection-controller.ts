@@ -114,7 +114,7 @@ export function createInspectionController(options: InspectionControllerOptions)
     if (disposed) return respond(request, true, 'The inspection page context is no longer available.');
     if (request.operation === 'query') return respond(request);
     lastRequestId = request.requestId;
-    if (request.operation === 'stop' || (request.operation === 'toggle' && (session || pending))) {
+    if (request.operation === 'stop') {
       clear();
       publish('inactive');
       return respond(request);
