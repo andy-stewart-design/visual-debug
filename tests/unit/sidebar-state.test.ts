@@ -60,13 +60,25 @@ describe('sidebar state presentation', () => {
     expect(active.canStop).toBe(true);
   });
 
-  it('never turns a pending Start command into active', () => {
-    const state = beginSidebarCommand(withView(view('inactive')), 'start');
-    const presentation = getSidebarPresentation(state);
-    expect(presentation.status).toBe('pending');
-    expect(presentation.status).not.toBe('active');
-    expect(presentation.actions.canStop).toBe(true);
-    expect(presentation.actions.canStart).toBe(false);
+  it('uses acknowledged state for the Active toggle while commands are pending', () => {
+    const inactive = getSidebarPresentation(withView(view('inactive')));
+    expect(inactive.status).not.toBe('active');
+    expect(inactive.actions.canStart).toBe(true);
+    expect(inactive.actions.canStop).toBe(false);
+
+    const starting = beginSidebarCommand(withView(view('inactive')), 'start');
+    const startingPresentation = getSidebarPresentation(starting);
+    expect(startingPresentation.status).toBe('pending');
+    expect(startingPresentation.status).not.toBe('active');
+    expect(startingPresentation.actions.canStart).toBe(false);
+
+    const active = getSidebarPresentation(withView(view('active')));
+    expect(active.status).toBe('active');
+    expect(active.actions.canStart).toBe(false);
+    expect(active.actions.canStop).toBe(true);
+
+    const stopping = beginSidebarCommand(withView(view('active')), 'stop');
+    expect(getSidebarPresentation(stopping).status).toBe('pending');
   });
 
   it('allows Stop to cancel pending startup and disables conflicting pending actions', () => {
