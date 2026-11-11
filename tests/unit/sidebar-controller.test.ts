@@ -25,6 +25,7 @@ function setup() {
     return page.handle(makeRequest(operation, id, `r-${++requestId}`));
   };
   const activation = {
+    invalidate: vi.fn(),
     start: vi.fn((id: number, _options?: { allowInjection?: boolean }) => execute(id, 'start')),
     stop: vi.fn((id: number) => execute(id, 'stop')),
     query: vi.fn((id: number) => execute(id, 'query')),
@@ -428,6 +429,29 @@ describe('sidebar controller', () => {
     held.resolve();
     await closing; await reopening;
     expect(pages.get(7)?.getState().status).toBe('active');
+  });
+
+  it('accepts expected teardown-channel loss during shutdown without hiding genuine failures', async () => {
+    const { controller, activation } = setup();
+    activation.stop.mockRejectedValue(new Error('The message port closed before a response was received.'));
+    await expect(controller.close(1)).resolves.toBeUndefined();
+  });
+
+  it('a navigation during error reporting cannot reapply an obsolete toolbar error', async () => {
+    const { controller, activation, getActiveTab, connect } = setup();
+    const { views } = connect();
+    await tick();
+    const lookup = deferred<{ id: number; windowId: number }>();
+    let reads = 0;
+    getActiveTab.mockImplementation(async () => ++reads === 2 ? lookup.promise : { id: 7, windowId: 1 });
+    activation.start.mockRejectedValueOnce(new Error('old startup failure'));
+    const starting = controller.openAndStart(1, 7, async () => undefined).catch((error) => error);
+    await vi.waitFor(() => expect(reads).toBe(2));
+    await controller.navigated(7, 1);
+    lookup.resolve({ id: 7, windowId: 1 });
+    expect(await starting).toBeUndefined();
+    expect(views.at(-1)?.status).toBe('inactive');
+    expect(views.at(-1)?.error).toBeUndefined();
   });
 
   it('surfaces unexpected shutdown errors rather than claiming successful cleanup', async () => {

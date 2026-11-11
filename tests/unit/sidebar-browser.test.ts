@@ -129,7 +129,7 @@ const bridge = vi.hoisted(() => {
   };
   vi.stubGlobal('browser', api);
   return { api, chrome, firefox, tabs,
-    activation: { start: vi.fn(), stop: vi.fn(), query: vi.fn() }, feedback: vi.fn() };
+    activation: { invalidate: vi.fn(), start: vi.fn(), stop: vi.fn(), query: vi.fn() }, feedback: vi.fn() };
 });
 vi.mock('../../apps/extension/lib/activation', () => ({
   inspectionActivation: bridge.activation, updateActionFeedback: bridge.feedback,
@@ -162,6 +162,7 @@ function connectBridge(windowId = 1) {
 describe('background/sidebar composition with fake native APIs', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    bridge.feedback.mockReset();
     bridge.api.sidePanel = bridge.chrome;
     bridge.api.sidebarAction = undefined;
     bridge.chrome.open.mockResolvedValue(undefined);
@@ -175,7 +176,7 @@ describe('background/sidebar composition with fake native APIs', () => {
     bridge.activation.start.mockImplementation(async (id: number) => bridgeResponse(id, 'active'));
     bridge.activation.stop.mockImplementation(async (id: number) => bridgeResponse(id, 'inactive'));
   });
-  afterEach(() => { vi.clearAllTimers(); vi.useRealTimers(); });
+  afterEach(() => { vi.clearAllTimers(); vi.useRealTimers(); vi.restoreAllMocks(); });
 
   it('calls native open synchronously, then starts only after a validated sidebar connection', async () => {
     background.main();
@@ -233,6 +234,53 @@ describe('background/sidebar composition with fake native APIs', () => {
     connected.receive({ kind: 'command', operation: 'start' });
     await vi.waitFor(() => expect(bridge.api.permissions.contains).toHaveBeenCalledTimes(2));
     expect(bridge.activation.start).not.toHaveBeenCalled();
+  });
+
+  it('does not reapply an alarm in the background catch for a restricted page', async () => {
+    const actual = await vi.importActual<typeof import('../../apps/extension/lib/activation')>('../../apps/extension/lib/activation');
+    bridge.feedback.mockImplementation(actual.updateActionFeedback);
+    bridge.activation.start.mockRejectedValueOnce(new Error('Cannot access a helium:// URL'));
+    background.main();
+    const connected = connectBridge();
+    await vi.waitFor(() => expect(connected.port.postMessage).toHaveBeenCalled());
+    bridge.api.action.onClicked.addListener.mock.calls.at(-1)![0]({ id: 7, windowId: 1 });
+    await vi.waitFor(() => expect(bridge.feedback).toHaveBeenCalledWith(7, 'Cannot access a helium:// URL'));
+    expect(bridge.api.action.setBadgeText).toHaveBeenLastCalledWith({ tabId: 7, text: '' });
+    expect(connected.port.postMessage).toHaveBeenCalledWith(expect.objectContaining({
+      view: expect.objectContaining({ status: 'unavailable', error: 'Cannot access a helium:// URL' }),
+    }));
+  });
+
+  it('still warns when opening the sidebar genuinely fails', async () => {
+    const actual = await vi.importActual<typeof import('../../apps/extension/lib/activation')>('../../apps/extension/lib/activation');
+    const logged = vi.spyOn(console, 'error').mockImplementation(() => undefined);
+    bridge.feedback.mockImplementation(actual.updateActionFeedback);
+    bridge.chrome.open.mockRejectedValueOnce(new Error('Unexpected sidebar initialization failure'));
+    background.main();
+    bridge.api.action.onClicked.addListener.mock.calls.at(-1)![0]({ id: 7, windowId: 1 });
+    await vi.waitFor(() => expect(logged).toHaveBeenCalled());
+    expect(bridge.api.action.setBadgeText).toHaveBeenLastCalledWith({ tabId: 7, text: '!' });
+    expect(bridge.api.action.setTitle).toHaveBeenLastCalledWith({
+      tabId: 7, title: 'Inspection error: Unexpected sidebar initialization failure',
+    });
+    expect(bridge.activation.start).not.toHaveBeenCalled();
+  });
+
+  it('clears stale feedback on navigation even when the page was already stopped', async () => {
+    const actual = await vi.importActual<typeof import('../../apps/extension/lib/activation')>('../../apps/extension/lib/activation');
+    bridge.feedback.mockImplementation(actual.updateActionFeedback);
+    await actual.updateActionFeedback(7, 'An earlier unexpected failure');
+    expect(bridge.api.action.setBadgeText).toHaveBeenLastCalledWith({ tabId: 7, text: '!' });
+    background.main();
+    const updated = bridge.api.tabs.onUpdated.addListener.mock.calls.at(-1)![0];
+    updated(7, { status: 'loading' }, { id: 7, windowId: 1 });
+    await vi.waitFor(() => expect(bridge.api.action.setTitle).toHaveBeenLastCalledWith({
+      tabId: 7, title: 'Open sidebar and start inspection',
+    }));
+    expect(bridge.api.action.setBadgeText).toHaveBeenLastCalledWith({ tabId: 7, text: '' });
+    expect(bridge.activation.invalidate).toHaveBeenCalledWith(7);
+    expect(bridge.activation.stop).not.toHaveBeenCalled();
+    expect(bridge.activation.invalidate.mock.invocationCallOrder[0]).toBeLessThan(bridge.feedback.mock.invocationCallOrder[0]);
   });
 
   it('uses the native Chrome close event to sweep only the closed window even after restart', async () => {

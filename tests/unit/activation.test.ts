@@ -8,7 +8,7 @@ const runtime = vi.hoisted(() => {
   });
   return api;
 });
-import { createActivationController, inspectionActivation, InspectionSupersededError, type ActivationTransport } from '../../apps/extension/lib/activation';
+import { createActivationController, inspectionActivation, updateActionFeedback, InspectionSupersededError, type ActivationTransport } from '../../apps/extension/lib/activation';
 import { createInspectionController, type ControllerSession } from '../../apps/extension/lib/inspection-controller';
 import { type InspectionRequest, type InspectionResponse } from '../../apps/extension/lib/inspection-protocol';
 
@@ -99,6 +99,56 @@ describe('activation transport', () => {
     held.resolve(acknowledgement);
     await starting;
     expect(feedback).toHaveBeenCalledExactlyOnceWith(3, undefined);
+  });
+
+  it.each(['Receiving end does not exist.', 'The message port closed before a response was received.'])(
+    'clears feedback for expected cleanup instead of reporting an error: %s', async (reason) => {
+      const feedback = vi.fn(async () => undefined);
+      const activation = createActivationController({ transport: {
+        send: async () => { throw new Error(reason); }, inject: vi.fn(),
+      }, updateFeedback: feedback });
+      await expect(activation.stop(3)).rejects.toThrow(reason);
+      expect(feedback).toHaveBeenCalledExactlyOnceWith(3, undefined);
+    },
+  );
+
+  it('invalidates old work on navigation without allowing its error feedback to return', async () => {
+    const { page } = setup();
+    const held = deferred<InspectionResponse>();
+    const feedback = vi.fn(async () => undefined);
+    let sent = false;
+    const activation = createActivationController({ transport: {
+      async send(_tabId, request) { sent = true; await held.promise; return page.handle(request); },
+      inject: vi.fn(),
+    }, updateFeedback: feedback });
+    const starting = activation.start(3).catch((error) => error);
+    await vi.waitFor(() => expect(sent).toBe(true));
+    activation.invalidate(3);
+    held.resolve(await page.handle({ kind: 'visual-debug:inspection', operation: 'query', tabId: 3, requestId: 'released' }));
+    expect(await starting).toBeInstanceOf(InspectionSupersededError);
+    expect(feedback).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    'Cannot access a helium:// URL',
+    'Missing host permission for the tab',
+    'The extensions gallery cannot be scripted.',
+    'Receiving end does not exist.',
+    'The inspection operation was superseded.',
+  ])('does not put an error badge on an expected outcome: %s', async (reason) => {
+    await updateActionFeedback(3, reason);
+    expect(runtime.badge).toHaveBeenLastCalledWith({ tabId: 3, text: '' });
+    expect(runtime.title).not.toHaveBeenCalledWith(expect.objectContaining({ title: expect.stringContaining('Inspection error:') }));
+  });
+
+  it.each([
+    "Cannot access 'state' before initialization",
+    'Inspection content script returned an invalid or stale protocol response.',
+    'Unexpected initialization failure',
+  ])('retains the badge and an error tooltip for unexpected failures: %s', async (reason) => {
+    await updateActionFeedback(3, reason);
+    expect(runtime.badge).toHaveBeenLastCalledWith({ tabId: 3, text: '!' });
+    expect(runtime.title).toHaveBeenLastCalledWith({ tabId: 3, title: `Inspection error: ${reason}` });
   });
 
   it('reports denied injection and never claims active', async () => {

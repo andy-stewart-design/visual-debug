@@ -1,5 +1,7 @@
 import { browser } from 'wxt/browser';
 import { resolveActionApi } from './action-api';
+import { errorMessage, isAccessDenied, isExpectedStopError, isExpectedUnavailableError, isMissingReceiver } from './inspection-feedback';
+export { isMissingReceiver } from './inspection-feedback';
 import {
   type InspectionOperation,
   type InspectionRequest,
@@ -22,6 +24,8 @@ export interface ActivationControllerOptions {
 }
 
 export interface ActivationController {
+  /** Invalidate in-flight work after a document navigation without sending a stop. */
+  invalidate(tabId: number): void;
   start(tabId: number, options?: { allowInjection?: boolean }): Promise<InspectionResponse>;
   stop(tabId: number): Promise<InspectionResponse>;
   query(tabId: number): Promise<InspectionResponse>;
@@ -29,17 +33,6 @@ export interface ActivationController {
 
 export class InspectionSupersededError extends Error {
   constructor() { super('The inspection operation was superseded.'); }
-}
-
-function errorMessage(error: unknown): string {
-  return error instanceof Error ? error.message : String(error);
-}
-
-export function isMissingReceiver(error: unknown): boolean {
-  return [
-    'Could not establish connection. Receiving end does not exist.',
-    'Receiving end does not exist.',
-  ].includes(errorMessage(error));
 }
 
 export function createActivationController(options: ActivationControllerOptions): ActivationController {
@@ -112,7 +105,9 @@ export function createActivationController(options: ActivationControllerOptions)
         await feedback(response.ok ? undefined : response.error ?? response.state.error);
         return response;
       } catch (error) {
-        if (!(error instanceof InspectionSupersededError)) await feedback(errorMessage(error));
+        if (!(error instanceof InspectionSupersededError)) {
+          await feedback(operation === 'stop' && isExpectedStopError(error) ? undefined : errorMessage(error));
+        }
         throw error;
       }
     };
@@ -121,7 +116,17 @@ export function createActivationController(options: ActivationControllerOptions)
     return operation === 'start' ? run(tabId, execute) : execute();
   };
 
+  const invalidate = (tabId: number): void => {
+    if (!Number.isSafeInteger(tabId) || tabId < 0) return;
+    epochs.set(tabId, epoch(tabId) + 1);
+    observations.set(tabId, (observations.get(tabId) ?? 0) + 1);
+    // Do not send a stop to the new document, and do not let old queued work
+    // run after navigation. The sidebar owns any subsequent explicit cleanup.
+    queues.delete(tabId);
+  };
+
   return {
+    invalidate,
     start: (tabId, startOptions) => invoke(tabId, 'start', startOptions?.allowInjection ?? true),
     stop: (tabId) => invoke(tabId, 'stop'),
     query: (tabId) => invoke(tabId, 'query'),
@@ -129,13 +134,19 @@ export function createActivationController(options: ActivationControllerOptions)
 }
 
 export async function updateActionFeedback(tabId: number, error?: string): Promise<void> {
+  const expected = error !== undefined && isExpectedUnavailableError(error);
+  const alarming = error !== undefined && !expected;
   try {
-    await resolveActionApi(browser).setBadgeText({ tabId, text: error ? '!' : '' });
+    await resolveActionApi(browser).setBadgeText({ tabId, text: alarming ? '!' : '' });
   } catch (feedbackError) {
     console.warn('Unable to update inspection badge.', feedbackError);
   }
   try {
-    await resolveActionApi(browser).setTitle({ tabId, title: error ? `Inspection unavailable: ${error}` : NEUTRAL_TITLE });
+    await resolveActionApi(browser).setTitle({
+      tabId,
+      title: alarming ? `Inspection error: ${error}` :
+        expected && isAccessDenied(error) ? 'Inspection unavailable on this page' : NEUTRAL_TITLE,
+    });
   } catch (feedbackError) {
     console.warn('Unable to update inspection action title.', feedbackError);
   }

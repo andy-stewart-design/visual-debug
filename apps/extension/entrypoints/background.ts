@@ -6,8 +6,7 @@ import { createSidebarBrowser, type SidebarBrowser } from '../lib/sidebar-browse
 import { createSidebarController, SIDEBAR_PORT } from '../lib/sidebar-controller';
 import { isTabId, validateInspectionStateMessage } from '../lib/inspection-protocol';
 import { hasGrantedSiteAccess } from '../lib/site-access';
-
-function errorMessage(error: unknown): string { return error instanceof Error ? error.message : String(error); }
+import { errorMessage, isExpectedUnavailableError } from '../lib/inspection-feedback';
 function record(value: unknown): value is Record<string, unknown> { return typeof value === 'object' && value !== null; }
 function tabReference(tab: Browser.tabs.Tab | undefined) {
   return tab && isTabId(tab.id) && isTabId(tab.windowId) ? { id: tab.id, windowId: tab.windowId } : undefined;
@@ -39,7 +38,9 @@ export default defineBackground(() => {
   const ports = new Map<number, { port: Port; connection: Connection }>();
   const watched = new Map<number, { opening: number; version: number }>();
   const run = (operation: Promise<unknown>) => {
-    void operation.catch((error) => console.error('Sidebar lifecycle operation failed.', error));
+    void operation.catch((error) => {
+      if (!isExpectedUnavailableError(error)) console.error('Sidebar lifecycle operation failed.', error);
+    });
   };
   const watch = (windowId: number) => {
     let item = watched.get(windowId);
@@ -163,7 +164,15 @@ export default defineBackground(() => {
   });
   browser.tabs.onActivated.addListener(({ windowId }) => run(controller.refresh(windowId)));
   browser.tabs.onUpdated.addListener((tabId, change, tab) => {
-    if (change.status === 'loading' || change.url !== undefined) run(controller.navigated(tabId, tab.windowId));
+    if (change.status === 'loading' || change.url !== undefined) {
+      // Clear per-tab feedback even when no inspection session was owned. The
+      // activation invalidation prevents a canceled old request from putting
+      // the badge back while the new document is loading.
+      // navigated invalidates the old document synchronously, before clearing
+      // its feedback. Its expected cleanup failures cannot reapply the badge.
+      run(controller.navigated(tabId, tab.windowId));
+      run(updateActionFeedback(tabId));
+    }
   });
   browser.tabs.onRemoved.addListener((_tabId, info) => run(controller.refresh(info.windowId)));
   browser.windows.onRemoved.addListener((windowId) => run(closeWindow(windowId)));

@@ -58,17 +58,21 @@ Use **`chrome-mv3`**, not `chrome-mv3-dev`. In the folder picker, Cmd+Shift+G le
 
 For Firefox Developer Edition, build with `pnpm --filter @visual-debug/extension build:firefox`, open `about:debugging#/runtime/this-firefox`, choose **Load Temporary Add-on**, and select `apps/extension/.output/firefox-mv2/manifest.json`. Use **Reload** there after rebuilding and reload test tabs. Temporary installation ends when Firefox closes.
 
-The browser may require approval for the new website-access permission during installation/update or in the extension's site-access settings. An unpacked/temporary reload does not necessarily show a prompt. If an ordinary site is unavailable, allow the extension access to that site (or all HTTP/HTTPS sites), then use **Refresh status** and **Start/restart**. The toolbar remains a temporary-access fallback where the browser permits it.
+The browser may require approval for the new website-access permission during installation/update or in the extension's site-access settings. An unpacked/temporary reload does not necessarily show a prompt. If an ordinary site is unavailable, allow the extension access to that site (or all HTTP/HTTPS sites), then use **Refresh status** and **Start/restart**. The toolbar remains a temporary-access fallback where the browser permits it. The declared policy is broader read/change access to HTTP(S) sites because approval is browser-managed; the extension only performs inspection on demand and does not claim to enforce a narrower permission boundary outside its own code.
+
+Production outputs are `apps/extension/.output/chrome-mv3/` and `apps/extension/.output/firefox-mv2/`. Chrome loads the former as an unpacked MV3 extension; Firefox Developer Edition loads the latter temporarily from its manifest. Build success and manifest inspection do not prove native browser behavior; final native acceptance is recorded as the user's report for the current production builds.
 
 The integration app contains geometry examples, resettable action/event counters, and dynamic-layout controls. Configure animation or other cases before inspection, because inspection intentionally blocks page pointer controls. Use explicit keyboard/DevTools stimulus for changes during inspection. Capture-event observation counters can increase without an activation leak; check action outcomes separately.
 
-## Boundaries and permissions
+## Boundaries, support, and known warnings
 
-- Verification targets are Chrome and Firefox Developer Edition on macOS; other browsers/platforms are not promised. Feature-specific native results and pending checks are recorded in the linked evidence.
+- Verification targets are Chrome and Firefox Developer Edition on macOS; other browsers/platforms are not promised. Current-production acceptance is recorded in the linked evidence as user-reported approval of the requested matrix. Installed application metadata is not evidence that a browser version has been user-tested.
+- The current production workflow is intentionally browser-specific: Chrome uses `side_panel`/MV3, while Firefox uses `sidebar_action`/MV2. Firefox Developer Edition evidence must not be generalized to stable Firefox, and no Helium or other Chromium acceptance is implied.
+- WXT's Firefox build currently warns that new extensions may need `data_collection_permissions` and recommends an extension ID. These are packaging/metadata warnings retained for this unpacked/temporary verification work; no store publishing or data-collection declaration has been performed.
 - Top-document inspection only. Iframe contents and shadow-root internals are not traversed.
-- Browser-internal pages such as `chrome://` and `about:` cannot be inspected; protected HTTPS pages may also reject injection. The sidebar reports unavailable/error; toolbar activation failures can additionally show a `!` badge with details in the tooltip.
+- Browser-internal pages such as `chrome://`, `helium://`, and `about:` cannot be inspected; protected HTTPS pages may also reject injection. The sidebar explains restricted/missing access without an alarm badge. `!` is reserved for unexpected extension failures, with details in its tooltip; normal reload, stopping, and unavailable pages do not show it, and navigation clears stale feedback.
 - Uses `activeTab`, `scripting`, and persistent host access limited to `http://*/*` and `https://*/*` (Chrome MV3 `host_permissions`; Firefox MV2 `permissions`). This permits on-demand sidebar Start without another toolbar click after the browser grants access. It does not include `file:`, `ftp:`, browser-internal origins, or automatic content registration. No extension code calls `permissions.request`; browser controls own approval. Merely loading a page or switching tabs does not inject or inspect it.
-- The generated `inspect.css` is web-accessible on HTTP(S) pages so WXT can load it into the Shadow DOM. This exposes only that CSS resource; it does not grant page-reading/injection permission.
+- The generated `inspect.css` is web-accessible so WXT can load it into the Shadow DOM. Chrome scopes that resource to HTTP(S); Firefox MV2 uses a bare resource list without per-resource origin matching. Only that CSS resource is exposed; this does not grant page-reading/injection permission.
 - Earlier page capture handlers, pre-existing pointer capture, unusual controls, native scrollbar variants, and touch input are not universally protected. Exit inspection if a page behaves unexpectedly.
 - No page editing, saved measurements, iframe support, resize handles, or page-spanning alignment grid.
 
@@ -78,9 +82,10 @@ The integration app contains geometry examples, resettable action/event counters
 apps/extension/    WXT extension, Solid UI, CSS Modules, pure measurement logic
 apps/playground/   Solid integration app and manual fixtures
 tests/unit/        Geometry, modifier, tracking, sidebar state/routing, and site-access tests
-plans/measurement-tools/  Specification, plan, and acceptance evidence
+plans/sidebar-layout/    Sidebar specification, plan, and acceptance evidence
+plans/measurement-tools/  Original measurement-tool specification and evidence
 ```
 
 Components use `components/kebab-case/index.tsx` with a default PascalCase export and `styles.module.css` imported as `s`. `App.tsx` composes UI; session/Shadow DOM lifecycle remains in `lib/`. Use direct Solid event handlers such as `on:click` inside the isolated UI: document-delegated `onClick` cannot pass WXT's event isolation.
 
-Historical measurement-tool acceptance covered the local integration app, **Pitchfork**, and **eBay**; see the original [manual acceptance evidence](plans/measurement-tools/evidence/manual-acceptance.md). Sidebar and website-access verification is recorded separately in [sidebar feature evidence](plans/sidebar-layout/evidence/step-2.3.md), including the new website-access checks still awaiting user confirmation. These are bounded checks, not universal compatibility guarantees. No store publication has been performed.
+Historical measurement-tool acceptance covered the local integration app, **Pitchfork**, and **eBay**; see the original [manual acceptance evidence](plans/measurement-tools/evidence/manual-acceptance.md). Sidebar and website-access verification, including user-reported Phase 2 approval, is recorded in [sidebar feature evidence](plans/sidebar-layout/evidence/step-2.3.md). The [final production evidence](plans/sidebar-layout/evidence/step-3.1.md) records passing automated/artifact checks and the user's broad approval of the current-production matrix. These are bounded checks, not universal compatibility guarantees. No store publication has been performed.

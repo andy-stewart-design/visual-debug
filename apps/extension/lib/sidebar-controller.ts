@@ -1,4 +1,5 @@
 import type { ActivationController } from './activation';
+import { errorMessage, isAccessDenied, isExpectedStopError, isMissingReceiver } from './inspection-feedback';
 import {
   INSPECTION_STATE_MESSAGE, isInspectionStatus, isTabId, validateInspectionStateMessage,
   type InspectionState, type InspectionStatus,
@@ -50,19 +51,10 @@ function isSidebarView(value: unknown): value is SidebarView {
 export function validateSidebarView(value: unknown): SidebarView | undefined {
   return isSidebarView(value) ? value : undefined;
 }
-function message(error: unknown): string { return error instanceof Error ? error.message : String(error); }
-function missing(error: unknown): boolean {
-  return ['Receiving end does not exist.', 'Could not establish connection. Receiving end does not exist.'].includes(message(error));
-}
-function accessDenied(error: unknown): boolean {
-  const text = message(error).toLowerCase();
-  return ['cannot access', 'permission denied', 'operation is insecure', 'missing host permission',
-    'extensions gallery cannot be scripted', 'restricted uri'].some((reason) => text.includes(reason));
-}
 const GUIDANCE = 'Allow this extension site access in the browser, then click Start (or the extension toolbar button). Browser-internal pages cannot be inspected.';
 
 export function createSidebarController(options: {
-  activation: Pick<ActivationController, 'start' | 'stop' | 'query'>;
+  activation: Pick<ActivationController, 'start' | 'stop' | 'query' | 'invalidate'>;
   getActiveTab(windowId: number): Promise<Tab | undefined>;
   getTabs(windowId: number): Promise<Tab[]>;
   getTab(tabId: number): Promise<Tab | undefined>;
@@ -178,8 +170,8 @@ export function createSidebarController(options: {
     }
     const view: SidebarView = {
       windowId: id, ...(tab === undefined ? {} : { tabId: tab }),
-      status: missing(error) || accessDenied(error) ? 'unavailable' : 'error', canStart: false,
-      error: missing(error) ? GUIDANCE : message(error),
+      status: isMissingReceiver(error) || isAccessDenied(error) ? 'unavailable' : 'error', canStart: false,
+      error: isMissingReceiver(error) ? GUIDANCE : errorMessage(error),
     };
     if (tab !== undefined) await render(id, tab, epoch, version, view, { acknowledged });
     else publish(value, view);
@@ -218,7 +210,7 @@ export function createSidebarController(options: {
       const state = await query(id, tab.id, epoch);
       if (state) await render(id, tab.id, epoch, version, fromState(id, state));
     } catch (error) {
-      if (tab && missing(error)) await showMissingReceiver(id, tab.id, epoch, version, acknowledged);
+      if (tab && isMissingReceiver(error)) await showMissingReceiver(id, tab.id, epoch, version, acknowledged);
       else await showFailure(id, tab?.id, epoch, version, error, acknowledged);
     }
   };
@@ -235,7 +227,7 @@ export function createSidebarController(options: {
     // Invocation is synchronous: activation invalidates queued/in-flight starts
     // before the first await, even if no content receiver exists yet.
     const result = options.activation.stop(tab);
-    const cleanup = result.then(() => undefined, (error) => { if (!missing(error)) throw error; });
+    const cleanup = result.then(() => undefined, (error) => { if (!isExpectedStopError(error)) throw error; });
     value.tabCleanup.set(tab, cleanup);
     void cleanup.finally(() => { if (value.tabCleanup.get(tab) === cleanup) value.tabCleanup.delete(tab); }).catch(() => undefined);
     return result;
@@ -307,7 +299,7 @@ export function createSidebarController(options: {
           let missingError: unknown;
           try { state = await query(id, active.id, epoch); }
           catch (error) {
-            if (!missing(error)) throw error;
+            if (!isMissingReceiver(error)) throw error;
             missingError = error;
           }
           if ((!state && missingError === undefined) || state?.status === 'unavailable') return;
@@ -334,7 +326,7 @@ export function createSidebarController(options: {
         }
       }
     } catch (error) {
-      if (operation === 'stop' && active && missing(error)) {
+      if (operation === 'stop' && active && isExpectedStopError(error)) {
         await showMissingReceiver(id, active.id, epoch, version, acknowledged);
       } else await showFailure(id, active?.id, epoch, version, error, acknowledged);
     }
@@ -344,6 +336,7 @@ export function createSidebarController(options: {
     value.closed = false;
     const epoch = value.epoch;
     let version = ++value.viewVersion;
+    const tabEpoch = value.tabEpochs.get(tab) ?? 0;
     const pending: Pending = { tabId: tab };
     value.pending.add(pending);
     let acknowledged = value.known.get(tab);
@@ -360,8 +353,12 @@ export function createSidebarController(options: {
       version = ++value.viewVersion;
       await mutate(id, tab, epoch, connection.id, version, true, pending);
     } catch (error) {
-      if (pending.cancelled || !current(value, epoch)) return;
+      if (pending.cancelled || !current(value, epoch) || (value.tabEpochs.get(tab) ?? 0) !== tabEpoch) return;
       await showFailure(id, tab, epoch, version, error, acknowledged);
+      // Reporting may await active-tab lookup. A navigation or newer observed
+      // state during that await must not reapply an old toolbar error.
+      if (pending.cancelled || !current(value, epoch) || (value.tabEpochs.get(tab) ?? 0) !== tabEpoch ||
+        value.viewVersion !== version || value.known.get(tab) !== acknowledged) return;
       throw error;
     } finally {
       value.pending.delete(pending);
@@ -387,7 +384,7 @@ export function createSidebarController(options: {
       try {
         const response = await stop(value, tab);
         value.known.set(tab, response.state);
-      } catch (error) { if (!missing(error)) throw error; }
+      } catch (error) { if (!isExpectedStopError(error)) throw error; }
     };
     // Stop known pending work without waiting for a slower full-window sweep.
     const immediate = Promise.all([...captured].map(stopOwned));
@@ -401,6 +398,9 @@ export function createSidebarController(options: {
     await cleanup;
   };
   const navigated = async (tab: number, id: number): Promise<void> => {
+    // Invalidate activation feedback synchronously so an old startup cannot
+    // restore a badge after this document has begun navigating.
+    options.activation.invalidate(tab);
     const value = get(id);
     value.tabEpochs.set(tab, (value.tabEpochs.get(tab) ?? 0) + 1);
     const pending = [...value.pending].filter((item) => item.tabId === tab);
@@ -415,7 +415,7 @@ export function createSidebarController(options: {
     value.reconciling.add(tab);
     value.known.delete(tab);
     if (shouldStop) {
-      try { await stop(value, tab); } catch (error) { if (!missing(error)) throw error; }
+      try { await stop(value, tab); } catch (error) { if (!isExpectedStopError(error)) throw error; }
     }
     await refresh(id);
   };
@@ -427,7 +427,7 @@ export function createSidebarController(options: {
     if (value.epoch !== epoch || actual?.windowId !== sender.windowId) return;
     if (value.closed) {
       if (state.status === 'active' || state.status === 'pending') {
-        try { await stop(value, sender.tabId); } catch (error) { if (!missing(error)) throw error; }
+        try { await stop(value, sender.tabId); } catch (error) { if (!isExpectedStopError(error)) throw error; }
       }
       return;
     }
