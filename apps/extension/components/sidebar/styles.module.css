@@ -1,0 +1,21 @@
+:global(body) {
+  margin: 0;
+  background: #f8fafc;
+  color: #172033;
+  font: 14px/1.45 system-ui, sans-serif;
+}
+
+.shell,
+.shell * {
+  box-sizing: border-box;
+}
+
+.shell {
+  min-height: 100vh;
+  padding: 20px 16px;
+}
+
+.title {
+  margin: 0 0 16px;
+  font-size: 20px;
+}

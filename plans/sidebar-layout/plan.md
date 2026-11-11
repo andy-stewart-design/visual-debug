@@ -11,8 +11,8 @@ This plan is an execution contract, not authorization to start implementation. R
 
 - Paths are relative to this repository. Evidence paths below are relative to `plans/sidebar-layout/`.
 - Preserve unrelated work. Expected files bound the change; they are not permission to edit unrelated code.
-- Readiness of the spec does not establish runtime feasibility. Permission/user-gesture behavior and reliable sidebar-close shutdown must pass the Phase 1 gate in **both** browsers before dependent UI migration proceeds. If the contract cannot be met, stop and escalate; do not substitute broader host permissions or leave inspection active after close.
-- Retain `activeTab` and `scripting`, with browser-specific sidebar declarations/permission generated as necessary by WXT. No persistent host grants or automatic all-sites content registration.
+- Spec readiness is not runtime proof. The approved Step 2.3 HTTP(S) host policy replaces the original no-persistent-access design; other permission expansion remains forbidden. Preserve the accepted close-stop contract, and stop dependent work if native behavior cannot meet the governing spec.
+- Retain `activeTab`/`scripting` and necessary sidebar declarations. Step 2.3 adds exactly `http://*/*` and `https://*/*` browser-managed host access; no other schemes, `<all_urls>`, automatic content registration, or extension-initiated permission requests. Earlier completed steps/evidence describe their historical permission policy.
 - Preserve page-local DOM references, picking, geometry, modifiers, overlays, Escape, and cleanup. Style editing and a new selected-element details UI are not part of this work.
 - The user performs all manual browser checks on macOS, using Chrome stable and Firefox Developer Edition with test profiles. The assistant runs deterministic checks and records the user's runtime results; it does not launch browsers or alter profiles. Missing user verification blocks the relevant gate. Developer Edition evidence does not establish stable-Firefox support; no browser installation or publication is authorized.
 - Use existing tooling and playground fixtures; do not introduce a browser automation framework for this migration. New unit-test files named below are proposed additions, not currently runnable tests.
@@ -23,7 +23,7 @@ This plan is an execution contract, not authorization to start implementation. R
 
 Static inspection found the following existing root commands: `pnpm check`, `pnpm test:unit`, `pnpm build`, `pnpm dev:ext`, and `pnpm dev:int`. Extension scripts include `pnpm --filter @visual-debug/extension build:firefox` and `pnpm --filter @visual-debug/extension dev:firefox`. `vitest.config.ts` includes `tests/unit/**/*.test.ts`; focused tests can use `pnpm exec vitest run <test paths>` from the repository root.
 
-The current background calls `enqueueToggle`; activation injects the top-frame runtime content script only when its receiver is missing. The content script serializes toggles, and `lib/session.ts` cleans up asynchronously mounted UI and page listeners. Existing tests cover geometry, formatting, measurement, modifiers, and tracking. There is no existing browser harness. These observations do not establish a green baseline. No checks or live acceptance were run to author this plan.
+At plan authoring, the background called `enqueueToggle`, activation injected the runtime content script on demand, and the content script serialized toggles; and `lib/session.ts` cleans up asynchronously mounted UI and page listeners. These were plan-authoring baseline observations, not the current delivery state. Subsequent explicit commands and user approvals are retained in step evidence; there is no native browser automation harness.
 
 ## Phase overview and delivery boundary
 
@@ -31,12 +31,12 @@ The current background calls `enqueueToggle`; activation injects the top-frame r
 | --- | --- | --- | --- |
 | 0 | Reproducible baseline and available verification environment | None | Existing failures distinguished from regressions; target browser access available |
 | 1 | Explicit lifecycle and minimal cross-browser sidebar integration proven | Phase 0 | Real toolbar-start, close-stop, permission fallback, and window isolation demonstrated in Chrome and Firefox |
-| 2 | Complete sidebar control UI replaces injected controls without inspection regressions | Phase 1 | Replacement proven before cleanup; state, focus, geometry, and teardown compose correctly |
-| 3 | Production artifacts and documented cross-browser acceptance | Phase 2 | All AC1–AC12 covered by recorded deterministic and real-browser evidence |
+| 2 | Complete sidebar control UI, approved site access, and direct Start without inspection regressions | Phase 1 | Replacement, actual HTTP(S) grant handling, direct Start, state, focus, geometry, and teardown compose correctly |
+| 3 | Production artifacts and documented cross-browser acceptance | Phase 2 | All AC1–AC15 covered by recorded deterministic and real-browser evidence |
 
 Delivery boundary: one feature-complete PR, with each step a bounded review/revert unit. Intermediate phases are not claims of a complete sidebar product.
 
-Atomic groups: Step 1.1 changes protocol and all existing consumers together; Step 1.2 changes toolbar behavior and the minimal working sidebar together; Step 2.2 removes the old indicator and its affected props/consumers together. Do not merge or revert half of an atomic group. Retain the current indicator through Step 2.1 as a temporary fallback until the new consumer is proven.
+Atomic groups: Step 1.1 changes protocol and consumers together; Step 1.2 changes toolbar/minimal sidebar together; Step 2.2 removes indicator/legacy consumers together; Step 2.3 changes HTTP(S) grants, capability checks, and direct-Start UI/controller behavior together. Do not merge or revert half of an atomic group. Retain the current indicator through Step 2.1 as a temporary fallback until the new consumer is proven.
 
 ## Phase 0 — Baseline and verification access
 
@@ -100,11 +100,11 @@ Expected files:
 
 Tasks:
 
-- [ ] Add validated start, stop, query, and state reporting with tab/document/request identity; validate extension sender/top-frame boundaries and reject malformed operations without side effects.
-- [ ] Make start/stop idempotent and operations deterministic; preserve on-demand injection and current toolbar-toggle usability while updating both ends atomically.
-- [ ] Invalidate pending starts on stop, navigation, or teardown; dispose a session that finishes mounting after invalidation rather than merely hiding its late response.
-- [ ] Test missing receivers, denied injection, invalid replies, duplicate starts/stops, superseded requests, Escape disposal, and navigation during asynchronous creation using injected transports/session factories.
-- [ ] Satisfy the verification and completion gate below and record concise evidence.
+- [x] Add validated start, stop, query, and state reporting with tab/document/request identity; validate extension sender/top-frame boundaries and reject malformed operations without side effects.
+- [x] Make start/stop idempotent and operations deterministic; preserve on-demand injection and current toolbar-toggle usability while updating both ends atomically.
+- [x] Invalidate pending starts on stop, navigation, or teardown; dispose a session that finishes mounting after invalidation rather than merely hiding its late response.
+- [x] Test missing receivers, denied injection, invalid replies, duplicate starts/stops, superseded requests, Escape disposal, and navigation during asynchronous creation using injected transports/session factories.
+- [x] Satisfy the verification and completion gate below and record concise evidence.
 
 Verification:
 
@@ -122,7 +122,8 @@ Review boundary: Small functional vertical slice, not a placeholder panel. Keep 
 
 Expected files:
 
-- `apps/extension/entrypoints/sidepanel/index.html`, `main.tsx`, `SidepanelApp.tsx` — new minimal Solid sidebar and bootstrap.
+- `apps/extension/entrypoints/sidepanel/index.html`, `main.tsx`, `sidepanel-app.tsx`, `use-sidebar-connection.ts` — minimal Solid sidebar, bootstrap, composition, and isolated connection lifecycle.
+- `apps/extension/components/sidebar/`, `sidebar-status/`, `sidebar-instructions/`, `sidebar-controls/` — modular presentation using `index.tsx` and `styles.module.css` in each component directory.
 - `apps/extension/lib/sidebar-browser.ts` — new browser-specific opening/lifetime adapter.
 - `apps/extension/lib/sidebar-controller.ts` — new window/tab ownership, lifecycle coordination, and state routing.
 - `apps/extension/entrypoints/background.ts`, `apps/extension/lib/activation.ts`, `apps/extension/wxt.config.ts` — toolbar integration, sender/target validation, and action metadata.
@@ -131,12 +132,13 @@ Expected files:
 
 Tasks:
 
-- [ ] Add the sidebar entrypoint and browser adapter; invoke gesture-dependent opening from the toolbar event without losing the browser's user-gesture context. Toolbar activation starts rather than toggles the current tab.
-- [ ] Route sidebar commands to its owning window's active tab, preserving per-tab state and preventing requests from controlling an unrelated window/tab.
-- [ ] Implement and test reliable close detection/shutdown in both browser APIs. Stop all retained sessions for the closing sidebar's window, invalidate queued/in-flight starts, and leave other windows unaffected; do not assume unload delivery alone is reliable.
-- [ ] Provide minimal real status, Start/restart, Stop, and toolbar-guidance controls. Query on reopen without auto-resume; denied access must not add host grants or leave partial page state.
-- [ ] Test tab changes, stale replies, window isolation, repeated open/close, background reconnection, and delayed startup cancellation with fake services; perform the real-browser feasibility checks below.
-- [ ] Satisfy the verification and completion gate below and record concise evidence.
+- [x] Add the sidebar entrypoint and browser adapter; invoke gesture-dependent opening from the toolbar event without losing the browser's user-gesture context. Toolbar activation starts rather than toggles the current tab.
+- [x] Route sidebar commands to its owning window's active tab, preserving per-tab state and preventing requests from controlling an unrelated window/tab.
+- [x] Implement and test reliable close detection/shutdown in both browser APIs. Stop all retained sessions for the closing sidebar's window, invalidate queued/in-flight starts, and leave other windows unaffected; do not assume unload delivery alone is reliable.
+- [x] Provide minimal real status, Start/restart, Stop, and toolbar-guidance controls. Query on reopen without auto-resume; denied access must not add host grants or leave partial page state.
+- [x] Apply the user-requested conventions refactor: kebab-case entrypoint, CSS Modules, independent status/instructions/controls components, and isolated connection lifecycle; preserve behavior and satisfy the existing deterministic checks, with approval and evidence recorded.
+- [x] Test tab changes, stale replies, window isolation, repeated open/close, background reconnection, and delayed startup cancellation with fake services; perform the real-browser feasibility checks below.
+- [x] Satisfy the verification and completion gate below and record concise evidence.
 
 Verification:
 
@@ -151,42 +153,46 @@ Phase exit gate: After Step 1.2 checks, run `pnpm check` and `pnpm test:unit` to
 
 ## Phase 2 — Sidebar control surface and safe replacement
 
-Outcome: The sidebar becomes the complete controls/status surface while page inspection retains its behavior.
+Outcome: The sidebar becomes the complete controls/status surface, including direct Start on granted HTTP(S) sites, while the page inspection engine retains its behavior.
 Depends on: Step 1.2 and Phase 1 exit gate.
 Review boundary: Sidebar presentation/state and parity-driven removal of the old control surface. No new inspection features or details editor.
 
 ### Step 2.1 — Complete sidebar state and interaction behavior
 
-Requirements / acceptance: R1–R4, R7–R9; AC2–AC6 and AC9 sidebar portions; AC3 absence of the indicator belongs to Step 2.2, final runtime coverage to Step 3.1.
+Requirements / acceptance: R1–R4, R7–R9, R11; AC2–AC6 and AC9 sidebar portions, AC13 gesture safeguard; AC3 absence of the indicator belongs to Step 2.2, final runtime coverage to Step 3.1.
 Depends on: Step 1.2 and Phase 1 exit gate.
 Review boundary: Sidebar presentation and lifecycle subscription/recovery; the old page indicator stays available until parity proof.
 
 Expected files:
 
-- `apps/extension/entrypoints/sidepanel/SidepanelApp.tsx`, `style.css` — complete state-driven controls, instructions, and styling; new stylesheet.
+- `apps/extension/entrypoints/sidepanel/sidepanel-app.tsx`, `use-sidebar-connection.ts` — complete state-driven composition and UI connection integration.
+- `apps/extension/components/sidebar/`, `sidebar-status/`, `sidebar-instructions/`, `sidebar-controls/` — refine the existing modular controls, instructions, and CSS Modules; retain kebab-case component directories.
 - `apps/extension/lib/sidebar-state.ts` — new pure presentation/state transitions for focused tests.
+- `apps/extension/lib/modifiers.ts`, `tests/unit/modifiers.test.ts` — user-approved active-session Alt+wheel history safeguard and its cancellation/cleanup regression tests.
 - `apps/extension/lib/sidebar-controller.ts` — subscriptions, reconciliation, and recovery integration.
+- `apps/extension/lib/activation.ts`, `tests/unit/activation.test.ts` — reload-repair feedback regression: passive reconciliation must not prevent successful toolbar error-badge clearing.
 - `tests/unit/sidebar-state.test.ts`, `tests/unit/sidebar-controller.test.ts` — new presentation-state tests and expanded routing tests.
 
 Tasks:
 
-- [ ] Render pending, active, inactive, unavailable, and error states from acknowledged page state; provide Start/restart, Stop/Exit, and explicit toolbar guidance when authorization is missing.
-- [ ] Disable conflicting pending actions and reconcile state on tab changes, Escape, navigation, reconnect, and reopen. Clear stale errors/results without treating a query or reopen as activation.
-- [ ] Provide concise existing inspection/Option/Escape instructions and usable labeled controls without introducing selected-element metadata or editing.
-- [ ] Add pure-state tests for each rendered state, actions, stale correlation, and recoverable failures; verify actual Solid UI wiring manually rather than treating pure-state tests as a DOM-rendering test.
-- [ ] Satisfy the verification and completion gate below and record concise evidence.
+- [x] Render pending, active, inactive, unavailable, and error states from acknowledged page state; provide Start/restart, Stop/Exit, and explicit toolbar guidance when authorization is missing.
+- [x] Disable conflicting pending actions and reconcile state on tab changes, Escape, navigation, reconnect, and reopen. Clear stale errors/results without treating a query or reopen as activation.
+- [x] Provide concise existing inspection/Option/Escape instructions and usable labeled controls without introducing selected-element metadata or editing.
+- [x] Add the user-approved non-passive Alt+wheel safeguard to page-session input ownership; verify Alt-only cancellation and cleanup without changing browser preferences or inactive-page behavior.
+- [x] Add pure-state tests for each rendered state, actions, stale correlation, and recoverable failures; verify actual Solid UI wiring manually rather than treating pure-state tests as a DOM-rendering test.
+- [x] Satisfy the verification and completion gate below and record concise evidence.
 
 Verification:
 
-- Automated, root: `pnpm exec vitest run tests/unit/sidebar-state.test.ts tests/unit/sidebar-controller.test.ts`, `pnpm --filter @visual-debug/extension check`, and both extension build commands from Step 1.2. Assert pending never implies active, stale errors cannot overwrite the new tab, missing authorization points to toolbar, and reopen does not start anything.
-- Manual, both approved browser profiles: exercise active/inactive, pending, restricted-page guidance, failure/retry, Escape/Exit, tab switching, and sidebar close/reopen. Click and keyboard-focus sidebar controls, return to the page, hold/release Option, and confirm no stuck modifier or loss of the page Escape path. This proves the new consumer before removing the fallback.
+- Automated, root: `pnpm exec vitest run tests/unit/sidebar-state.test.ts tests/unit/sidebar-controller.test.ts tests/unit/modifiers.test.ts tests/unit/activation.test.ts`, `pnpm --filter @visual-debug/extension check`, and both extension build commands from Step 1.2. Assert pending never implies active, stale errors cannot overwrite the new tab, missing authorization points to toolbar, and reopen does not start anything.
+- Manual, both approved browser profiles: exercise active/inactive, pending, restricted-page guidance, failure/retry, Escape/Exit, tab switching, and sidebar close/reopen. Click and keyboard-focus sidebar controls, return to the page, hold/release Option, and confirm no stuck modifier or loss of the page Escape path. Also verify Alt/Option+wheel over the page cannot navigate history while inspecting, ordinary scrolling remains unchanged, and default Alt+wheel behavior returns after inspection stops even with the sidebar still open (AC13). This proves the new consumer before removing the fallback.
 
 Completion gate: Sidebar controls/status cover the existing indicator's instructions/Exit and new lifecycle states in both browsers; routing tests pass and close behavior remains intact. The temporary indicator's continued presence is intentional, not final acceptance.
 Evidence location: [evidence/step-2.1.md](evidence/step-2.1.md).
 
 ### Step 2.2 — Retire injected controls and preserve page-only overlays
 
-Requirements / acceptance: R1, R2, R7–R9; AC3, AC8, AC9, AC12 migration portions. Final production/browser evidence belongs to Step 3.1.
+Requirements / acceptance: R1, R2, R7–R9, R11; AC3, AC8, AC9, AC12, AC13 migration portions. Final production/browser evidence belongs to Step 3.1.
 Depends on: Step 2.1.
 Review boundary: Atomic removal of the obsolete indicator/legacy control path after replacement proof; narrowly scoped geometry/focus regression fixes only if demonstrated.
 
@@ -200,11 +206,11 @@ Expected files:
 
 Tasks:
 
-- [ ] Confirm Step 2.1 parity and search authored extension sources for indicator/legacy-toggle consumers before deleting them; update affected props/imports atomically.
-- [ ] Keep selection/measurement overlays and the Shadow host required by picking/tracking; remove controls, not the overlay host or cleanup boundary.
-- [ ] Exercise sidebar resizing and modifier/focus transitions; make only necessary page-local fixes with focused regression tests in the same step.
-- [ ] Check the diff for accidental details/style-editing scope and for leftover legacy message consumers.
-- [ ] Satisfy the verification and completion gate below and record concise evidence.
+- [x] Confirm Step 2.1 parity and search authored extension sources for indicator/legacy-toggle consumers before deleting them; update affected props/imports atomically.
+- [x] Keep selection/measurement overlays and the Shadow host required by picking/tracking; remove controls, not the overlay host or cleanup boundary.
+- [x] Exercise sidebar resizing and modifier/focus transitions; make only necessary page-local fixes with focused regression tests in the same step.
+- [x] Check the diff for accidental details/style-editing scope and for leftover legacy message consumers.
+- [x] Satisfy the verification and completion gate below and record concise evidence.
 
 Verification:
 
@@ -214,18 +220,56 @@ Verification:
 Completion gate: Replacement is usable without the old indicator; page picking/measurement and cleanup preserve their prior semantics across sidebar-induced layout/focus changes; retired consumers are absent and no deferred feature was added.
 Evidence location: [evidence/step-2.2.md](evidence/step-2.2.md).
 
-Phase exit gate: After Step 2.2 checks, run `pnpm test:unit`, `pnpm check`, and both extension builds. Recheck toolbar-start, multi-tab sidebar close, and Escape/Exit in both profiles with no injected indicator. All replacement behavior must compose without the fallback. Record the assessment in `evidence/step-2.2.md` before Phase 3 or supervised approval.
+
+
+### Step 2.3 — Persistent website access and direct sidebar Start
+
+Outcome: A granted ordinary HTTP(S) tab is Stopped with Start available, and explicit sidebar Start works without a toolbar click or automatic page activation.
+
+Requirements / acceptance: R3, R4, R5, R7, R8; AC2, AC4, AC5, AC7, AC10, AC14, AC15.
+Depends on: Step 2.2.
+Review boundary: The approved permission-policy change and direct Start path only. Preserve per-tab retention, passive query/reopen/tab-switch behavior, navigation invalidation, protected-page honesty, and no automatic content registration.
+
+Expected files:
+
+- `apps/extension/wxt.config.ts` — bounded `http://*/*` and `https://*/*` host patterns, alongside `activeTab`/`scripting`; generated Chrome MV3/Firefox MV2 forms must be checked.
+- `apps/extension/lib/site-access.ts`, `tests/unit/site-access.test.ts` — actual browser-grant matching and unit coverage.
+- `apps/extension/lib/inspection-feedback.ts`, `tests/unit/inspection-feedback.test.ts` — shared expected-unavailable versus unexpected-error classification and badge policy.
+- `apps/extension/entrypoints/background.ts`, `apps/extension/lib/activation.ts` — grant-aware on-demand injection and toolbar/background integration.
+- `apps/extension/lib/sidebar-controller.ts`, `apps/extension/lib/sidebar-state.ts` — confirmed-grant sidebar Start, unavailable guidance, and stale-result protection.
+- `tests/unit/sidebar-controller.test.ts`, `tests/unit/sidebar-browser.test.ts` — direct Start, missing/withheld access, cancellation, and browser adapter coverage.
+- `README.md` — current permission and Start workflow, including browser-controlled site-access approval.
+- `plans/sidebar-layout/evidence/step-2.3.md` — bounded implementation evidence and pending native/manual checks.
+
+Tasks:
+
+- [x] Verify the actual host grant before fresh sidebar injection; preserve resident authorized contexts, do not request permissions in code or promise unpacked-reload prompts, and keep query/reopen/tab switching passive.
+- [x] Handle missing/withheld fresh access, non-HTTP(S) pages, and browser injection refusal honestly without reporting active or automatically creating sessions.
+- [x] Verify static manifests contain Chrome MV3 `host_permissions` and Firefox MV2 `permissions` for exactly the approved HTTP(S) patterns, with `activeTab`/`scripting` and no `<all_urls>` or automatic content registration.
+- [x] Preserve navigation stop/reinjection-on-explicit-Start, per-tab state, closing-window shutdown, and stale/cancellation protections while adding the grant path.
+- [x] Apply the user-approved conservative badge policy: no `!` for restricted/access-denied targets or expected lifecycle cleanup; clear old feedback on navigation, invalidate stale work, and preserve warnings for genuine unexpected failures.
+- [x] Satisfy the verification and completion gate below, including user-owned native checks, and record concise evidence.
+
+Verification:
+
+- Automated/static, repository root: `pnpm exec vitest run tests/unit/site-access.test.ts tests/unit/sidebar-controller.test.ts tests/unit/sidebar-browser.test.ts tests/unit/sidebar-state.test.ts tests/unit/activation.test.ts tests/unit/inspection-feedback.test.ts`, `pnpm check`, `pnpm test:unit`, `pnpm build`, and `pnpm --filter @visual-debug/extension build:firefox`. Assert granted missing receivers show inactive without injection, explicit Start permits injection, withheld grants prevent it, and delayed grant results cannot cross tab/lifecycle boundaries. Inspect both manifests for exact origins, sidebar entries, and no popup/automatic content registration. These checks do not prove native grants.
+- Manual (user-owned): in Chrome stable and Firefox Developer Edition on macOS, grant site access through browser controls, open a newly opened ordinary HTTP/HTTPS tab, and click sidebar Start without toolbar first. Repeat with access missing/withheld, query/reopen/switch tabs, navigate, use a protected/native page, and confirm no autoscripting or false active state. Also confirm normal reload/stop and restricted-page outcomes do not show `!`, and navigation clears an earlier badge (AC15). Genuine-failure badge branches are exercised by deterministic tests; do not manufacture unsafe browser failures. Do not treat unpacked reload prompts as guaranteed.
+
+Completion gate: Deterministic/static checks and the user-owned Chrome/Firefox Developer Edition checks pass, with AC14 direct fresh-site Start, withheld access, protected-page refusal, passive query/reopen, and AC15's no-false-badge behavior demonstrated. Record concise evidence and actual user approval; unit/build output alone cannot pass this gate.
+Evidence location: [evidence/step-2.3.md](evidence/step-2.3.md).
+
+Phase 2 exit gate: After Step 2.3 checks, run the equivalent prior gate checks (`pnpm test:unit`, `pnpm check`, and both extension builds), recheck toolbar-start, direct Start with actual HTTP(S) grants, missing/withheld guidance, multi-tab/window close, navigation, sidebar-resize geometry, modifier/focus/Alt-wheel behavior, and Escape/Exit in both profiles with no injected indicator. Inspect Chrome MV3 `host_permissions` and Firefox MV2 `permissions`, and record native protected-page/injection outcomes and no-false-badge behavior after reload or denied access. Do not pass Phase 2 while the Step 2.3 native/manual gate is pending; record the assessment in `evidence/step-2.3.md`.
 
 ## Phase 3 — Production-artifact acceptance and documentation
 
 Outcome: Demonstrate the feature using production outputs in both target browsers and document only the support actually established.
-Depends on: Step 2.2 and Phase 2 exit gate.
+Depends on: Step 2.3 and Phase 2 exit gate.
 Review boundary: Acceptance evidence and usage/build documentation. A discovered application regression returns to its owning step; do not silently redefine a gate.
 
 ### Step 3.1 — Verify production outputs and document supported behavior
 
-Requirements / acceptance: R1–R10; final acceptance for AC1–AC12, combining prior deterministic proof with this real-browser/artifact gate.
-Depends on: Step 2.2 and Phase 2 exit gate.
+Requirements / acceptance: R1–R11; final acceptance for AC1–AC15, combining prior deterministic proof with this real-browser/artifact gate.
+Depends on: Step 2.3 and Phase 2 exit gate.
 Review boundary: Production builds, target-browser matrix, final scope review, and truthful usage/support documentation.
 
 Expected files:
@@ -236,22 +280,22 @@ Expected files:
 
 Tasks:
 
-- [ ] Run final regression/build checks and inspect the emitted Chrome/Firefox manifests and referenced sidebar/content assets.
-- [ ] With operator approval, load each production output into its target test profile and repeat AC1–AC10, including delayed-start closure/navigation, two tabs, two windows, focus, viewport, and restricted pages.
-- [ ] Record browser/macOS versions, artifact directories printed by WXT, actual results, and any blocker/limitation; distinguish build/unit/static evidence from live acceptance.
-- [ ] Update usage/support documentation to match the observed workflow; do not claim other browsers/platforms or style editing.
-- [ ] Satisfy the verification and completion gate below and record concise evidence.
+- [x] Run final regression/build checks and inspect the emitted Chrome/Firefox manifests and referenced sidebar/content assets.
+- [x] With operator approval, load each production output into its target test profile and repeat AC1–AC10, AC13, AC14, and AC15, including delayed-start closure/navigation, two tabs, two windows, focus, viewport, and restricted pages.
+- [x] Record browser/macOS versions, artifact directories printed by WXT, actual results, and any blocker/limitation; distinguish build/unit/static evidence from live acceptance.
+- [x] Update usage/support documentation to match the observed workflow; do not claim other browsers/platforms or style editing.
+- [x] Satisfy the verification and completion gate below and record concise evidence.
 
 Verification:
 
 - Automated, root: `pnpm check`, `pnpm test:unit`, `pnpm build`, and `pnpm --filter @visual-debug/extension build:firefox`. Inspect generated manifests/assets for correct browser-specific sidebar entry, no popup, permission boundary, and on-demand content registration. Build success does not stand in for installed-artifact behavior.
-- Manual: Keep `pnpm dev:int` serving fixtures, but load the **production** extension outputs, not dev/HMR builds. Chrome uses Load unpacked; Firefox uses a temporary extension from the generated manifest through `about:debugging`. Execute the spec's AC1–AC10 starting conditions and expected outcomes; use debugger-controlled delay for pending-start cases. Confirm reopening via native sidebar UI alone stays inactive, whereas toolbar invocation explicitly starts inspection. Record separate results for both browsers and verify documentation against those results.
+- Manual: Keep `pnpm dev:int` serving fixtures, but load the **production** extension outputs, not dev/HMR builds. Chrome uses Load unpacked; Firefox uses a temporary extension from the generated manifest through `about:debugging`. Execute the spec's AC1–AC10, AC13, AC14, and AC15 starting conditions and expected outcomes; use debugger-controlled delay for pending-start cases. Confirm reopening via native sidebar UI alone stays inactive, whereas toolbar invocation explicitly starts inspection. Record separate results for both browsers and verify documentation against those results.
 - Review: Compare the final change scope with AC12 and review README support claims against the actual evidence. Check all final acceptance owners below have evidence; a missing/blocked check cannot be counted as success.
 
 Completion gate: All final acceptance mappings have their required deterministic and real-browser evidence, no relevant unexplained regression, and accurate docs. Browser/operator unavailability or a failed close/permission test blocks completion. No store submission or release is implied.
 Evidence location: [evidence/step-3.1.md](evidence/step-3.1.md).
 
-Phase exit gate: After Step 3.1 checks, assess complete AC1–AC12 coverage against the actual production-artifact results and previous step evidence. Record the final assessment in `evidence/step-3.1.md`; assess it before requesting supervised acceptance. Do not create a second progress checklist or substitute a waiver for a passed gate.
+Phase exit gate: After Step 3.1 checks, assess complete AC1–AC15 coverage against the actual production-artifact results and previous step evidence. Record the final assessment in `evidence/step-3.1.md`; assess it before requesting supervised acceptance. Do not create a second progress checklist or substitute a waiver for a passed gate.
 
 ## Final acceptance
 
@@ -260,24 +304,28 @@ Step 3.1 owns final artifact/browser acceptance; earlier steps provide the named
 | Spec acceptance ID | Owning step / gate | Verification and expected result | Evidence location |
 | --- | --- | --- | --- |
 | AC1 | 3.1 / Phase 3 gate; 1.2 feasibility | Both production manifests/assets and actual sidebar loading in Chrome/Firefox | [Final](evidence/step-3.1.md), [feasibility](evidence/step-1.2.md) |
-| AC2 | 3.1; 1.2 and 2.1 focused proof | Toolbar opens/starts; pending reflects actual result; sidebar restart respects temporary permission | [Final](evidence/step-3.1.md), [1.2](evidence/step-1.2.md), [2.1](evidence/step-2.1.md) |
+| AC2 | 3.1; 1.2/2.1 historical and 2.3 current access proof | Toolbar opens/starts; pending reflects acknowledgement; sidebar Start respects actual browser access | [Final](evidence/step-3.1.md), [1.2](evidence/step-1.2.md), [2.1](evidence/step-2.1.md), [site access](evidence/step-2.3.md) |
 | AC3 | 3.1; 2.2 replacement gate | Sidebar owns instructions/status/Exit; indicator absent; overlays remain on page | [Final](evidence/step-3.1.md), [replacement](evidence/step-2.2.md) |
 | AC4 | 3.1; 1.1/1.2 and 2.1 scoped tests | Retained per-tab state and correlation prevent stale cross-tab results/actions | [Final](evidence/step-3.1.md), [protocol](evidence/step-1.1.md), [routing](evidence/step-1.2.md), [UI state](evidence/step-2.1.md) |
 | AC5 | 3.1; 1.1/1.2 lifecycle proof | Reload/navigation ends inspection; query/reopen cannot resume it | [Final](evidence/step-3.1.md), [lifecycle](evidence/step-1.1.md), [browser](evidence/step-1.2.md) |
 | AC6 | 3.1; 1.2 feasibility and 2.2 parity | Actual close stops all owned-window sessions, not other windows; Escape/Exit clean up; reopen stays inactive | [Final](evidence/step-3.1.md), [close integration](evidence/step-1.2.md), [parity](evidence/step-2.2.md) |
-| AC7 | 3.1; 1.1/1.2 failure proof | Restricted/unauthorized activation fails clearly without partial state or broad grants | [Final](evidence/step-3.1.md), [transport](evidence/step-1.1.md), [permissions](evidence/step-1.2.md) |
+| AC7 | 3.1; 1.1/1.2 historical and 2.3 grant/denial proof | Restricted/withheld access fails clearly without false active state or unapproved origins | [Final](evidence/step-3.1.md), [transport](evidence/step-1.1.md), [permissions](evidence/step-1.2.md), [site access](evidence/step-2.3.md) |
 | AC8 | 3.1; 2.2 regression gate | Playground interaction/geometry semantics preserved as sidebar changes viewport | [Final](evidence/step-3.1.md), [regression](evidence/step-2.2.md) |
 | AC9 | 3.1; 2.1/2.2 focus proof | Page-local modifiers recover; focus/tab changes are not closure; real close stops inspection | [Final](evidence/step-3.1.md), [controls](evidence/step-2.1.md), [regression](evidence/step-2.2.md) |
 | AC10 | 3.1; 1.1/1.2 cancellation proof | Delayed startup after close/navigation cannot leave hidden session; no duplicate sessions | [Final](evidence/step-3.1.md), [cancellation](evidence/step-1.1.md), [integration](evidence/step-1.2.md) |
 | AC11 | 3.1 / Phase 3 gate | Separate versioned Chrome/Firefox runtime evidence, distinct from static/build/unit checks | [Final](evidence/step-3.1.md) |
 | AC12 | 3.1; 2.2 scope review | No style editing, persistence/undo, or new selected-element results UI in migration | [Final](evidence/step-3.1.md), [scope](evidence/step-2.2.md) |
+| AC13 | 3.1; 2.1 safeguard and 2.2 regression | Alt+wheel cannot navigate the inspected page; ordinary scrolling and stopped-session default behavior remain intact | [Final](evidence/step-3.1.md), [safeguard](evidence/step-2.1.md), [regression](evidence/step-2.2.md) |
+| AC14 | 3.1; 2.3 access/Start gate | A granted fresh ordinary tab is Stopped; sidebar Start injects without toolbar, while queries/tab switches never do | [Final](evidence/step-3.1.md), [site access](evidence/step-2.3.md) |
+| AC15 | 3.1; 2.3 feedback gate | Expected unavailable/navigation outcomes have no alarm badge; genuine failures still warn and stale feedback cannot return | [Final](evidence/step-3.1.md), [feedback](evidence/step-2.3.md) |
 
 ## Rollback and recovery
 
 - No persistent data migration, publication, or irreversible operation is planned. Use the PR or the named atomic groups as code rollback units; never restore one side of a message contract alone.
 - Before reverting browser integration, stop sessions in all affected test tabs/windows. If transport or close cleanup is broken, reload/close the inspected test pages to destroy their runtime contexts, then reload the prior extension build. Reverting source alone does not remove already-injected sessions.
 - Step 1.1 retains the existing consumer; Step 1.2 switches to a functional minimal sidebar with the indicator temporarily retained; Step 2.2 removes compatibility only after parity. If later acceptance fails, retain evidence, leave the verification task unchecked, and fix the owning implementation or seek agreement to a material plan change.
-- Missing browser access blocks dependent acceptance; it never permits calling unit/build results cross-browser proof. Do not roll back to broader permissions or close-leaves-running as an unapproved fallback.
+- Missing browser access blocks dependent acceptance; it never permits calling unit/build results cross-browser proof. Do not add origins beyond the approved HTTP(S) patterns or leave inspection running after close as a fallback.
+- Revert Step 2.3's manifest origins, grant checks, and Start behavior together. Stop sessions/reload test pages and the extension first; browser site settings are user-owned and any grant revocation must be explicit. Do not leave broad declared access behind after reverting only the UI.
 
 ## Planned deferred checks
 

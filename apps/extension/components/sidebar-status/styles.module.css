@@ -1,0 +1,17 @@
+.status {
+  padding: 12px;
+  border: 1px solid #cbd5e1;
+  border-radius: 8px;
+  background: white;
+  font-weight: 600;
+}
+
+.error {
+  margin: 8px 0;
+  color: #a61b1b;
+}
+
+.guidance {
+  margin: 8px 0;
+  color: #475569;
+}
