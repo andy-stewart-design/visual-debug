@@ -1,12 +1,27 @@
+import { createSignal } from 'solid-js';
 import type { ContentScriptContext } from 'wxt/utils/content-script-context';
 import { createPicker, type Picker } from './picking';
 import { createModifierController } from './modifiers';
 import { createSelectionController } from './selection';
+import type { ElementSnapshot } from './element-snapshot';
 import { createTrackingController, type TrackingController } from './tracking';
 import { mountSessionUi } from './ui';
 
+export type PaddingPreview = Readonly<{
+  selectionId: string;
+  sequence: number;
+}>;
+
+export type PaddingPreviewIntent = Readonly<{
+  selectionId: string;
+  visible: boolean;
+  sequence: number;
+  streamEpoch?: number;
+}>;
+
 export type InspectionSession = {
   readonly isDisposed: boolean;
+  setPaddingPreview?: (intent: PaddingPreviewIntent) => void;
   dispose: () => void;
 };
 
@@ -14,12 +29,20 @@ export async function createInspectionSession(
   ctx: ContentScriptContext,
   onDisposed: () => void,
   signal?: AbortSignal,
+  onSelection?: (selection: ElementSnapshot | undefined) => void,
 ): Promise<InspectionSession> {
   let disposed = false;
   let removeInvalidationListener: (() => void) | undefined;
   let sessionUi: Awaited<ReturnType<typeof mountSessionUi>> | undefined;
   let picker: Picker | undefined;
   let tracking: TrackingController | undefined;
+  let removeSelectionListener: (() => void) | undefined;
+  const [paddingPreview, setPaddingPreview] = createSignal<PaddingPreview | undefined>();
+  // Preview ordering is a pair: the persisted background stream epoch fences
+  // packets from a retired MV3 worker, while the sequence orders packets in
+  // one worker stream.
+  let lastPreviewEpoch = -1;
+  let lastPreviewSequence = -1;
   const selection = createSelectionController();
 
   const dispose = () => {
@@ -33,6 +56,9 @@ export async function createInspectionSession(
     picker = undefined;
     modifiers.dispose();
     selection.dispose();
+    setPaddingPreview(undefined);
+    removeSelectionListener?.();
+    removeSelectionListener = undefined;
     removeInvalidationListener?.();
     removeInvalidationListener = undefined;
     sessionUi?.remove();
@@ -59,7 +85,7 @@ export async function createInspectionSession(
     signal?.addEventListener('abort', dispose, { once: true });
     window.addEventListener('keydown', onKeyDown, true);
     removeInvalidationListener = ctx.onInvalidated(dispose);
-    const mountedUi = await mountSessionUi(ctx, selection, modifiers.held);
+    const mountedUi = await mountSessionUi(ctx, selection, modifiers.held, paddingPreview);
     if (disposed || ctx.isInvalid) {
       mountedUi.remove();
       throw new Error('The inspection page context became invalid during startup.');
@@ -88,6 +114,10 @@ export async function createInspectionSession(
       throw new Error('The inspection UI was removed during startup.');
     }
     tracking = createdTracking;
+    removeSelectionListener = selection.subscribeSelection((next) => {
+      if (paddingPreview()?.selectionId !== next?.selectionId) setPaddingPreview(undefined);
+      onSelection?.(next);
+    });
 
     if (ctx.isInvalid || disposed) {
       dispose();
@@ -97,6 +127,19 @@ export async function createInspectionSession(
     return {
       get isDisposed() {
         return disposed;
+      },
+      setPaddingPreview(intent) {
+        if (disposed) return;
+        const streamEpoch = intent.streamEpoch ?? 0;
+        if (streamEpoch < lastPreviewEpoch ||
+          (streamEpoch === lastPreviewEpoch && intent.sequence <= lastPreviewSequence)) return;
+        lastPreviewEpoch = streamEpoch;
+        lastPreviewSequence = intent.sequence;
+        if (!intent.visible) {
+          setPaddingPreview(undefined);
+        } else if (selection.state().anchor?.selectionId === intent.selectionId) {
+          setPaddingPreview({ selectionId: intent.selectionId, sequence: intent.sequence });
+        }
       },
       dispose,
     };

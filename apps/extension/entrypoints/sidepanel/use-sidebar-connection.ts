@@ -28,6 +28,7 @@ export type SidebarConnection = {
   start: () => void;
   stop: () => void;
   refresh: () => void;
+  preview: (visible: boolean) => void;
 };
 
 function isStateMessage(value: unknown): value is StateMessage {
@@ -47,6 +48,9 @@ export function useSidebarConnection(): SidebarConnection {
   let reconnectTimer: ReturnType<typeof setTimeout> | undefined;
   let heartbeatTimer: ReturnType<typeof setInterval> | undefined;
   let retryAttempt = 0;
+  // Keep the last successful show identity so a visibility transition can
+  // still issue its clear when the sidebar state has already gone inactive.
+  let previewTarget: { tabId: number; documentId: string; selectionId: string } | undefined;
 
   const clearHeartbeat = () => {
     if (heartbeatTimer !== undefined) {
@@ -168,6 +172,36 @@ export function useSidebarConnection(): SidebarConnection {
     else identifyWindow(port);
   };
 
+  const preview = (visible: boolean) => {
+    const port = currentPort;
+    if (!port) return;
+
+    const view = getSidebarPresentation(model()).view;
+    const state = view?.state;
+    const selection = view?.selection;
+    const currentTarget = view?.status === 'active' && view.tabId !== undefined && state && selection ? {
+      tabId: view.tabId,
+      documentId: state.identity.documentId,
+      selectionId: selection.selectionId,
+    } : undefined;
+    // Hides must not depend on the current presentation: disabling/stopping
+    // inspection can remove the state before the section's focus/hover leave
+    // effect runs. Prefer the identity that was shown most recently.
+    const target = visible ? currentTarget : previewTarget ?? currentTarget;
+    if (!target) return;
+    const sent = post(port, {
+      kind: 'preview',
+      intent: {
+        ...target,
+        visible,
+        // The background controller owns the monotonic stream. This port is
+        // reconnectable, so a local counter must not define ordering.
+        sequence: 0,
+      },
+    });
+    if (sent) previewTarget = visible ? target : undefined;
+  };
+
   const sendCommand = (operation: SidebarCommand) => {
     const port = currentPort;
     if (port === undefined || windowId === undefined) return;
@@ -223,5 +257,6 @@ export function useSidebarConnection(): SidebarConnection {
     start,
     stop,
     refresh,
+    preview,
   };
 }

@@ -7,7 +7,7 @@ export default defineConfig({
     // this as MV3 host_permissions and folds it into MV2 permissions for
     // Firefox; no content script is registered by this declaration.
     host_permissions: ['http://*/*', 'https://*/*'],
-    permissions: ['activeTab', 'scripting'],
+    permissions: ['activeTab', 'scripting', 'storage'],
     action: {
       default_title: 'Open sidebar and start inspection',
     },

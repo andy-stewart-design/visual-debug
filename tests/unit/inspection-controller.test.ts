@@ -139,6 +139,24 @@ describe('inspection controller', () => {
     expect(controller.getState().status).toBe('active');
   });
 
+  it('does not include the active selection in a rejected document response', async () => {
+    const live = session();
+    const controller = createInspectionController(options(async () => live));
+    await controller.handle(request('start', 'good'));
+    controller.selectionChanged({
+      selectionId: 'selected',
+      tagName: 'div',
+      box: { left: 0, top: 0, width: 10, height: 10 },
+      computedStyle: { padding: { top: '1px', right: '2px', bottom: '3px', left: '4px' } },
+    });
+
+    const rejected = await controller.handle(request('stop', 'wrong-doc', 'doc-b'));
+    expect(rejected.ok).toBe(false);
+    expect(rejected.state.status).toBe('error');
+    expect(rejected.state.selection).toBeUndefined();
+    expect(controller.getState().selection?.selectionId).toBe('selected');
+  });
+
   it('reports factory failures and supports a fresh retry', async () => {
     let calls = 0;
     const controller = createInspectionController(options(async () => { if (++calls === 1) throw new Error('mount failed'); return session(); }));

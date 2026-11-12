@@ -1,0 +1,10 @@
+.region {
+    position: fixed;
+    z-index: 2147483645;
+    pointer-events: none;
+    overflow: visible;
+}
+
+.region path {
+    fill: rgb(251 191 36 / 0.28);
+}

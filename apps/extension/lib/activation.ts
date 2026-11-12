@@ -6,14 +6,17 @@ import {
   type InspectionOperation,
   type InspectionRequest,
   type InspectionResponse,
+  type InspectionPreviewRequest,
   makeRequest,
   validateInspectionResponse,
+  validateInspectionPreviewResponse,
 } from './inspection-protocol';
 
 const NEUTRAL_TITLE = 'Open sidebar and start inspection';
 
 export interface ActivationTransport {
   send(tabId: number, message: InspectionRequest): Promise<unknown>;
+  sendPreview?(tabId: number, message: InspectionPreviewRequest): Promise<unknown>;
   inject(tabId: number): Promise<void>;
 }
 
@@ -29,6 +32,7 @@ export interface ActivationController {
   start(tabId: number, options?: { allowInjection?: boolean }): Promise<InspectionResponse>;
   stop(tabId: number): Promise<InspectionResponse>;
   query(tabId: number): Promise<InspectionResponse>;
+  preview(tabId: number, request: InspectionPreviewRequest): Promise<void>;
 }
 
 export class InspectionSupersededError extends Error {
@@ -125,11 +129,39 @@ export function createActivationController(options: ActivationControllerOptions)
     queues.delete(tabId);
   };
 
+  const preview = (tabId: number, request: InspectionPreviewRequest): Promise<void> => {
+    if (!options.transport.sendPreview) return Promise.resolve();
+    if (!Number.isSafeInteger(tabId) || tabId < 0 || request.tabId !== tabId) {
+      return Promise.reject(new Error('Invalid inspection preview tab ID.'));
+    }
+    const issuedEpoch = epoch(tabId);
+    return run(tabId, async () => {
+      const guard = () => {
+        if (issuedEpoch !== epoch(tabId)) throw new InspectionSupersededError();
+      };
+      guard();
+      const discovery = await options.transport.send(tabId, makeRequest('query', tabId, nextId()));
+      guard();
+      const current = validateInspectionResponse(discovery);
+      if (!current || !current.ok || current.identity.tabId !== tabId || current.state.identity.documentId !== request.documentId ||
+        current.state.status !== 'active') return;
+      const response = await options.transport.sendPreview!(tabId, request);
+      guard();
+      const validated = validateInspectionPreviewResponse(response);
+      if (!validated || validated.tabId !== tabId || validated.documentId !== request.documentId ||
+        validated.sequence !== request.sequence || validated.streamEpoch !== request.streamEpoch) {
+        throw new Error('Inspection preview returned an invalid response.');
+      }
+      if (!validated.ok) throw new Error('Inspection preview was rejected by the content script.');
+    });
+  };
+
   return {
     invalidate,
     start: (tabId, startOptions) => invoke(tabId, 'start', startOptions?.allowInjection ?? true),
     stop: (tabId) => invoke(tabId, 'stop'),
     query: (tabId) => invoke(tabId, 'query'),
+    preview,
   };
 }
 
@@ -155,6 +187,7 @@ export async function updateActionFeedback(tabId: number, error?: string): Promi
 export const inspectionActivation = createActivationController({
   transport: {
     send: (tabId, message) => browser.tabs.sendMessage(tabId, message, { frameId: 0 }),
+    sendPreview: (tabId, message) => browser.tabs.sendMessage(tabId, message, { frameId: 0 }),
     inject: async (tabId) => {
       await browser.scripting.executeScript({ target: { tabId, frameIds: [0] }, files: ['/content-scripts/inspect.js'] });
     },

@@ -13,6 +13,12 @@ import {
 import type { SidebarView } from '../../apps/extension/lib/sidebar-controller';
 
 const guard = { epoch: 1, token: 1 };
+const selection = (id: string) => ({
+  selectionId: id,
+  tagName: 'div',
+  box: { left: 0, top: 0, width: 10, height: 10 },
+  computedStyle: { padding: { top: '1px', right: '2px', bottom: '3px', left: '4px' } },
+});
 
 function connected(): SidebarState {
   return beginSidebarConnection(createSidebarState(9), guard);
@@ -112,6 +118,20 @@ describe('sidebar state presentation', () => {
     expect(queried.pending).toBe('query');
     expect(queried.view?.status).toBe('inactive');
     expect(getSidebarPresentation(queried).status).toBe('pending');
+  });
+
+  it('keeps selection snapshots aligned with the newest document revision', () => {
+    const first = withView({ ...view('active', 3, 2), selection: selection('first'), state: {
+      ...view('active', 3, 2).state!, selection: selection('first'),
+    } });
+    const older = acceptSidebarView(first, { ...view('active', 3, 1), selection: selection('older'), state: {
+      ...view('active', 3, 1).state!, selection: selection('older'),
+    } }, guard);
+    expect(older).toBe(first);
+    const newer = acceptSidebarView(first, { ...view('active', 3, 3), selection: selection('newer'), state: {
+      ...view('active', 3, 3).state!, selection: selection('newer'),
+    } }, guard);
+    expect(newer.view?.selection?.selectionId).toBe('newer');
   });
 
   it('ignores retired connection views and older revisions in one document', () => {

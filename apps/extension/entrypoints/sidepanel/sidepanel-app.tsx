@@ -1,5 +1,6 @@
 import Sidebar from '../../components/sidebar';
 import SidebarControls from '../../components/sidebar-controls';
+import PaddingSection from '../../components/padding-section';
 import { useSidebarConnection } from './use-sidebar-connection';
 
 export default function SidepanelApp() {
@@ -13,6 +14,7 @@ export default function SidepanelApp() {
         onStop={connection.stop}
         onRefresh={connection.refresh}
       />
+      <PaddingSection presentation={connection.presentation} onPreview={connection.preview} />
     </Sidebar>
   );
 }

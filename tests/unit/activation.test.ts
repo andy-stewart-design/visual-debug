@@ -10,7 +10,7 @@ const runtime = vi.hoisted(() => {
 });
 import { createActivationController, inspectionActivation, updateActionFeedback, InspectionSupersededError, type ActivationTransport } from '../../apps/extension/lib/activation';
 import { createInspectionController, type ControllerSession } from '../../apps/extension/lib/inspection-controller';
-import { type InspectionRequest, type InspectionResponse } from '../../apps/extension/lib/inspection-protocol';
+import { type InspectionRequest, type InspectionResponse, type InspectionPreviewRequest } from '../../apps/extension/lib/inspection-protocol';
 
 function deferred<T>() {
   let resolve!: (value: T) => void;
@@ -247,6 +247,26 @@ describe('activation transport', () => {
     expect(failed.state.status).toBe('error');
     expect(feedback).toHaveBeenCalledWith(3, 'mount failed');
     expect((await activation.start(3)).state.status).toBe('active');
+  });
+
+  it('rejects a negative preview acknowledgement instead of treating it as active', async () => {
+    const { page } = setup();
+    const transport: ActivationTransport = {
+      send: vi.fn(async (_tabId, request) => page.handle(request)),
+      sendPreview: vi.fn(async (_tabId, request) => ({
+        kind: 'visual-debug:inspection-preview' as const, ok: false,
+        tabId: request.tabId, documentId: request.documentId, sequence: request.sequence,
+      })),
+      inject: vi.fn(async () => undefined),
+    };
+    const activation = createActivationController({ transport });
+    await activation.start(3);
+    const request: InspectionPreviewRequest = {
+      kind: 'visual-debug:inspection-preview', tabId: 3, documentId: 'doc-a',
+      selectionId: 'selection-1', preview: 'padding', visible: true, sequence: 1,
+    };
+    await expect(activation.preview(3, request)).rejects.toThrow('rejected');
+    expect(transport.sendPreview).toHaveBeenCalledOnce();
   });
 
   it('preserves idempotent toolbar starts and shared action feedback', async () => {

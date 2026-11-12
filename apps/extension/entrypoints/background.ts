@@ -3,7 +3,7 @@ import { defineBackground } from 'wxt/utils/define-background';
 import { inspectionActivation, updateActionFeedback } from '../lib/activation';
 import { resolveActionApi } from '../lib/action-api';
 import { createSidebarBrowser, type SidebarBrowser } from '../lib/sidebar-browser';
-import { createSidebarController, SIDEBAR_PORT } from '../lib/sidebar-controller';
+import { createSidebarController, SIDEBAR_PORT, validateSidebarPreviewIntent } from '../lib/sidebar-controller';
 import { isTabId, validateInspectionStateMessage } from '../lib/inspection-protocol';
 import { hasGrantedSiteAccess } from '../lib/site-access';
 import { errorMessage, isExpectedUnavailableError } from '../lib/inspection-feedback';
@@ -12,7 +12,31 @@ function tabReference(tab: Browser.tabs.Tab | undefined) {
   return tab && isTabId(tab.id) && isTabId(tab.windowId) ? { id: tab.id, windowId: tab.windowId } : undefined;
 }
 
+const PREVIEW_STREAM_EPOCH_KEY = 'visual-debug:preview-stream-epoch';
+
+async function allocatePreviewStreamEpoch(): Promise<number> {
+  // Some unit/browser harnesses provide only the APIs they exercise. The real
+  // MV3 manifest grants storage; the compatibility fallback is only for such
+  // harnesses and keeps their legacy preview requests at epoch zero.
+  const storage = (browser as unknown as {
+    storage?: { local?: {
+      get(key: string): Promise<Record<string, unknown>>;
+      set(value: Record<string, number>): Promise<void>;
+    } };
+  }).storage?.local;
+  if (!storage) return 0;
+  const stored = await storage.get(PREVIEW_STREAM_EPOCH_KEY);
+  const previous = stored[PREVIEW_STREAM_EPOCH_KEY];
+  const next = typeof previous === 'number' && Number.isSafeInteger(previous) && previous >= 0 ? previous + 1 : 1;
+  await storage.set({ [PREVIEW_STREAM_EPOCH_KEY]: next });
+  return next;
+}
+
 export default defineBackground(() => {
+  // The epoch is persisted, unlike the service worker's in-memory sequence.
+  // Every worker incarnation therefore creates a stream newer than packets
+  // which may still be in flight from the retired incarnation.
+  const previewStreamEpoch = allocatePreviewStreamEpoch();
   let sidebar: SidebarBrowser | undefined;
   let setupError: string | undefined;
   try { sidebar = createSidebarBrowser(browser); } catch (error) { setupError = errorMessage(error); }
@@ -32,6 +56,7 @@ export default defineBackground(() => {
       }
     },
     canInject: (tabId) => hasGrantedSiteAccess(browser, tabId),
+    previewStreamEpoch,
   });
   type Port = ReturnType<typeof browser.runtime.connect>;
   type Connection = ReturnType<typeof controller.connect>;
@@ -142,6 +167,9 @@ export default defineBackground(() => {
       } else if (message.kind === 'command' && binding && claimedWindow !== undefined &&
         (message.operation === 'start' || message.operation === 'stop' || message.operation === 'query')) {
         run(controller.command(claimedWindow, binding.id, message.operation));
+      } else if (message.kind === 'preview' && binding && claimedWindow !== undefined) {
+        const intent = validateSidebarPreviewIntent(message.intent);
+        if (intent) run(controller.preview(claimedWindow, binding.id, intent));
       }
       // Heartbeats keep Chrome's service worker alive; they never start a page.
     });

@@ -5,6 +5,7 @@ import { createInspectionSession } from '../lib/session';
 import {
   INSPECTION_STATE_MESSAGE,
   type InspectionState,
+  validateInspectionPreviewRequest,
   validateInspectionRequest,
   validateSender,
 } from '../lib/inspection-protocol';
@@ -35,7 +36,7 @@ export default defineContentScript({
       controller ??= createInspectionController({
         tabId,
         documentId,
-        createSession: (onDisposed, signal) => createInspectionSession(ctx, onDisposed, signal),
+        createSession: (onDisposed, signal, onSelection) => createInspectionSession(ctx, onDisposed, signal, onSelection),
         onState: reportState,
       });
       return controller;
@@ -46,6 +47,11 @@ export default defineContentScript({
     const onMessage = (message: unknown, sender: Browser.runtime.MessageSender) => {
       if (shuttingDown || !validateSender(sender, browser.runtime.id)) return undefined;
       const boundTabId = controller?.getState().identity.tabId;
+      const preview = validateInspectionPreviewRequest(message, boundTabId);
+      if (preview) {
+        if (!controller) return { kind: preview.kind, ok: false, tabId: preview.tabId, documentId: preview.documentId, sequence: preview.sequence };
+        return controller.handlePreview(preview);
+      }
       const request = validateInspectionRequest(message, boundTabId);
       if (!request) return undefined;
       return ensureController(request.tabId).handle(request);

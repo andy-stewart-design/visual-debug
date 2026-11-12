@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 import { createSidebarController, validateSidebarView, type SidebarView } from '../../apps/extension/lib/sidebar-controller';
+import type { ActivationController } from '../../apps/extension/lib/activation';
 import { createInspectionController, type ControllerSession } from '../../apps/extension/lib/inspection-controller';
 import { makeRequest, type InspectionResponse, type InspectionState } from '../../apps/extension/lib/inspection-protocol';
 
@@ -29,23 +30,42 @@ function setup() {
     start: vi.fn((id: number, _options?: { allowInjection?: boolean }) => execute(id, 'start')),
     stop: vi.fn((id: number) => execute(id, 'stop')),
     query: vi.fn((id: number) => execute(id, 'query')),
+    preview: vi.fn(async (id: number, request: Parameters<NonNullable<ActivationController['preview']>>[1]) => {
+      const page = pages.get(id);
+      if (!page) throw new Error('Receiving end does not exist.');
+      const response = page.handlePreview(request);
+      if (!response.ok) throw new Error('Inspection preview was rejected by the content script.');
+    }),
   };
   const getActiveTab = vi.fn(async (windowId: number) => tabs.get(active.get(windowId) ?? -1));
   const getTabs = vi.fn(async (windowId: number) => [...tabs.values()].filter((tab) => tab.windowId === windowId));
   const getTab = vi.fn(async (id: number) => tabs.get(id));
   const canInject = vi.fn(async () => false);
-  const controller = createSidebarController({ activation, getActiveTab, getTabs, getTab, canInject, readyTimeoutMs: 20 });
+  const makeController = (previewStreamEpoch = 0) => createSidebarController({
+    activation, getActiveTab, getTabs, getTab, canInject, previewStreamEpoch, readyTimeoutMs: 20,
+  });
+  const controller = makeController();
   const connect = (windowId = 1) => {
     const views: SidebarView[] = [];
     const connection = controller.connect(windowId, (view) => views.push(view));
     return { views, connection };
   };
-  return { controller, activation, tabs, active, pages, factory, getActiveTab, getTabs, getTab, canInject, connect };
+  return { controller, makeController, activation, tabs, active, pages, factory, getActiveTab, getTabs, getTab, canInject, connect };
 }
 async function tick() { await new Promise((resolve) => setTimeout(resolve, 0)); }
 
-function state(tabId: number, status: InspectionState['status'], revision: number, documentId = `doc-${tabId}`): InspectionState {
-  return { identity: { tabId, documentId, requestId: `event-${revision}` }, status, revision };
+const selection = (id: string) => ({
+  selectionId: id,
+  tagName: 'div',
+  box: { left: 0, top: 0, width: 10, height: 10 },
+  computedStyle: { padding: { top: '1px', right: '2px', bottom: '3px', left: '4px' } },
+});
+
+function state(tabId: number, status: InspectionState['status'], revision: number, documentId = `doc-${tabId}`, selected?: string): InspectionState {
+  return {
+    identity: { tabId, documentId, requestId: `event-${revision}` }, status, revision,
+    ...(selected === undefined ? {} : { selection: selection(selected) }),
+  };
 }
 function response(value: InspectionState): InspectionResponse {
   return { kind: 'visual-debug:inspection', operation: 'query', ok: true, identity: value.identity, state: value };
@@ -349,6 +369,164 @@ describe('sidebar controller', () => {
     expect(views.at(-1)?.error).toBeUndefined();
   });
 
+  it('shows and then hides the preview in the page session', async () => {
+    const { controller, activation, pages, connect } = setup();
+    const accepted: boolean[] = [];
+    const page = createInspectionController({
+      tabId: 7,
+      documentId: 'doc-7',
+      createSession: async () => ({
+        get isDisposed() { return false; },
+        setPaddingPreview(intent) { accepted.push(intent.visible); },
+        dispose() { /* test session */ },
+      }),
+    });
+    pages.set(7, page);
+    await page.handle(makeRequest('start', 7, 'start'));
+    page.selectionChanged(selection('selection-1'));
+    const { connection } = connect();
+    await vi.waitFor(() => expect(activation.query).toHaveBeenCalled());
+    await vi.waitFor(() => expect(accepted).toContain(false));
+    accepted.length = 0;
+
+    await controller.preview(1, connection.id, {
+      tabId: 7, documentId: 'doc-7', selectionId: 'selection-1', visible: true, sequence: 0,
+    });
+    await controller.preview(1, connection.id, {
+      tabId: 7, documentId: 'doc-7', selectionId: 'selection-1', visible: false, sequence: 0,
+    });
+    expect(accepted).toEqual([true, false]);
+  });
+
+  it('records a show before transport and orders a disconnect clear after it', async () => {
+    const { controller, activation, connect } = setup();
+    const { connection } = connect();
+    await tick();
+    await controller.stateChanged(state(7, 'active', 2, 'doc-7', 'selection-1'), { tabId: 7, windowId: 1 });
+    const held = deferred<void>();
+    const requests: Array<{ visible: boolean; sequence: number }> = [];
+    activation.preview.mockImplementation(async (_tab, request) => {
+      requests.push({ visible: request.visible, sequence: request.sequence });
+      if (request.visible) await held.promise;
+    });
+    const showing = controller.preview(1, connection.id, {
+      tabId: 7, documentId: 'doc-7', selectionId: 'selection-1', visible: true, sequence: 0,
+    });
+    await vi.waitFor(() => expect(requests).toHaveLength(1));
+    connection.disconnect();
+    await vi.waitFor(() => expect(requests).toHaveLength(2));
+    expect(requests).toEqual([{ visible: true, sequence: 1 }, { visible: false, sequence: 2 }]);
+    held.resolve();
+    await showing;
+  });
+
+  it('invalidates an in-flight preview when the active tab refreshes', async () => {
+    const { controller, activation, active, getActiveTab, connect } = setup();
+    const { connection } = connect();
+    await tick();
+    await controller.stateChanged(state(7, 'active', 2, 'doc-7', 'selection-1'), { tabId: 7, windowId: 1 });
+    const lookup = deferred<{ id: number; windowId: number }>();
+    getActiveTab.mockClear();
+    getActiveTab.mockReturnValueOnce(lookup.promise);
+    const showing = controller.preview(1, connection.id, {
+      tabId: 7, documentId: 'doc-7', selectionId: 'selection-1', visible: true, sequence: 0,
+    });
+    await vi.waitFor(() => expect(getActiveTab).toHaveBeenCalledOnce());
+    active.set(1, 8);
+    const refreshing = controller.refresh(1);
+    lookup.resolve({ id: 7, windowId: 1 });
+    await Promise.all([showing, refreshing]);
+    expect(activation.preview).not.toHaveBeenCalledWith(7, expect.objectContaining({ visible: true }));
+    expect(activation.preview).toHaveBeenCalledWith(7, expect.objectContaining({ visible: false, sequence: 2 }));
+  });
+
+  it('keeps the controller-owned preview sequence across sidebar reconnection', async () => {
+    const { controller, activation, connect } = setup();
+    const first = connect();
+    await tick();
+    await controller.stateChanged(state(7, 'active', 2, 'doc-7', 'selection-1'), { tabId: 7, windowId: 1 });
+    activation.preview.mockResolvedValue(undefined);
+    await controller.preview(1, first.connection.id, {
+      tabId: 7, documentId: 'doc-7', selectionId: 'selection-1', visible: true, sequence: 0,
+    });
+    first.connection.disconnect();
+    const second = connect();
+    await tick();
+    await controller.stateChanged(state(7, 'active', 3, 'doc-7', 'selection-1'), { tabId: 7, windowId: 1 });
+    await controller.preview(1, second.connection.id, {
+      tabId: 7, documentId: 'doc-7', selectionId: 'selection-1', visible: true, sequence: 0,
+    });
+    const requests = activation.preview.mock.calls.map(([, request]) => ({ visible: request.visible, sequence: request.sequence }));
+    expect(requests).toEqual([
+      { visible: true, sequence: 1 }, { visible: false, sequence: 2 }, { visible: true, sequence: 3 },
+    ]);
+  });
+
+  it('fences a fresh background stream and clears a surviving page without a target', async () => {
+    const { makeController, activation, pages } = setup();
+    const accepted: Array<{ visible: boolean; streamEpoch: number; sequence: number }> = [];
+    let lastEpoch = -1;
+    let lastSequence = -1;
+    const page = createInspectionController({
+      tabId: 7,
+      documentId: 'surviving-page',
+      createSession: async () => ({
+        get isDisposed() { return false; },
+        setPaddingPreview(intent) {
+          const epoch = intent.streamEpoch ?? 0;
+          if (epoch < lastEpoch || (epoch === lastEpoch && intent.sequence <= lastSequence)) return;
+          lastEpoch = epoch;
+          lastSequence = intent.sequence;
+          accepted.push({ visible: intent.visible, streamEpoch: epoch, sequence: intent.sequence });
+        },
+        dispose() { /* test session */ },
+      }),
+    });
+    pages.set(7, page);
+    await page.handle(makeRequest('start', 7, 'surviving-start'));
+    page.selectionChanged(selection('selection-1'));
+
+    const first = makeController(1);
+    const firstConnection = first.connect(1, () => undefined);
+    await vi.waitFor(() => expect(activation.query).toHaveBeenCalled());
+    await first.preview(1, firstConnection.id, {
+      tabId: 7, documentId: 'surviving-page', selectionId: 'selection-1', visible: true, sequence: 0,
+    });
+    expect(accepted.at(-1)?.visible).toBe(true);
+
+    const fresh = makeController(2);
+    const freshConnection = fresh.connect(1, () => undefined);
+    await vi.waitFor(() => expect(accepted.at(-1)).toEqual({ visible: false, streamEpoch: 2, sequence: 1 }));
+    const countAfterReconciliation = accepted.length;
+
+    // A delayed packet from the retired worker cannot resurrect the overlay,
+    // even though its sequence is larger than the new worker's sequence.
+    page.handlePreview({
+      kind: 'visual-debug:inspection-preview', tabId: 7, documentId: 'surviving-page',
+      selectionId: 'selection-1', preview: 'padding', visible: true, streamEpoch: 1, sequence: 99,
+    });
+    expect(accepted).toHaveLength(countAfterReconciliation);
+
+    firstConnection.disconnect();
+    freshConnection.disconnect();
+  });
+
+  it('does not retain a preview target after a rejected acknowledgement', async () => {
+    const { controller, activation, connect } = setup();
+    const { connection } = connect();
+    await tick();
+    await controller.stateChanged(state(7, 'active', 2, 'doc-7', 'selection-1'), { tabId: 7, windowId: 1 });
+    activation.preview.mockRejectedValueOnce(new Error('rejected'));
+    await expect(controller.preview(1, connection.id, {
+      tabId: 7, documentId: 'doc-7', selectionId: 'selection-1', visible: true, sequence: 0,
+    })).rejects.toThrow('rejected');
+    activation.preview.mockResolvedValue(undefined);
+    await controller.preview(1, connection.id, {
+      tabId: 7, documentId: 'doc-7', selectionId: 'selection-1', visible: true, sequence: 0,
+    });
+    expect(activation.preview.mock.calls.map(([, request]) => request.sequence)).toEqual([1, 2]);
+  });
+
   it('old connections cannot issue commands or disconnect replacements', async () => {
     const { controller, connect } = setup();
     const old = connect().connection;
@@ -484,6 +662,20 @@ describe('sidebar controller', () => {
     activation.query.mockResolvedValue(response(state(7, 'inactive', 0, 'replacement')));
     await controller.stateChanged(state(7, 'active', 100, 'old-delayed-document'), { tabId: 7, windowId: 1 });
     expect(views.at(-1)?.state?.identity.documentId).toBe('replacement');
+  });
+
+  it('reconciles delayed events after receiver loss before retaining their selection', async () => {
+    const { controller, pages, factory, connect } = setup();
+    const { views } = connect();
+    await tick();
+    await controller.stateChanged(state(7, 'active', 2, 'doc-7', 'old-selection'), { tabId: 7, windowId: 1 });
+    pages.delete(7);
+    await controller.refresh(1);
+
+    pages.set(7, createInspectionController({ tabId: 7, documentId: 'replacement', createSession: factory }));
+    await controller.stateChanged(state(7, 'active', 99, 'doc-7', 'stale-selection'), { tabId: 7, windowId: 1 });
+    expect(views.at(-1)?.state?.identity.documentId).toBe('replacement');
+    expect(views.at(-1)?.selection).toBeUndefined();
   });
 
   it('does not accept an old-document event during navigation reconciliation', async () => {

@@ -1,6 +1,10 @@
+import { isElementSnapshot, type ElementSnapshot } from './element-snapshot';
+
 export const INSPECTION_MESSAGE = 'visual-debug:inspection';
 export const INSPECTION_STATE_MESSAGE = 'visual-debug:inspection-state';
+export const INSPECTION_PREVIEW_MESSAGE = 'visual-debug:inspection-preview';
 export type InspectionOperation = 'start' | 'stop' | 'query';
+export type InspectionPreviewKind = 'padding';
 export type InspectionStatus = 'pending' | 'active' | 'inactive' | 'unavailable' | 'error';
 
 export interface InspectionIdentity {
@@ -14,6 +18,8 @@ export interface InspectionState {
   identity: InspectionIdentity;
   /** Monotonic within a document, including unsolicited disposal events. */
   revision: number;
+  /** Page-owned, serializable data for the current selected anchor. */
+  selection?: ElementSnapshot;
   error?: string;
 }
 
@@ -38,6 +44,28 @@ export interface InspectionResponse {
 export interface InspectionStateMessage {
   kind: typeof INSPECTION_STATE_MESSAGE;
   state: InspectionState;
+}
+
+/** Transient sidebar intent. It is deliberately not part of InspectionState. */
+export interface InspectionPreviewRequest {
+  kind: typeof INSPECTION_PREVIEW_MESSAGE;
+  tabId: number;
+  documentId: string;
+  selectionId: string;
+  preview: InspectionPreviewKind;
+  visible: boolean;
+  sequence: number;
+  /** Monotonic extension-wide stream epoch; optional for old in-memory callers. */
+  streamEpoch?: number;
+}
+
+export interface InspectionPreviewResponse {
+  kind: typeof INSPECTION_PREVIEW_MESSAGE;
+  ok: boolean;
+  tabId: number;
+  documentId: string;
+  sequence: number;
+  streamEpoch?: number;
 }
 
 export interface MessageSenderLike {
@@ -67,6 +95,46 @@ export function isInspectionStatus(value: unknown): value is InspectionStatus {
 
 export function isInspectionOperation(value: unknown): value is InspectionOperation {
   return typeof value === 'string' && INSPECTION_OPERATIONS.has(value);
+}
+
+function isInspectionPreviewRequest(value: unknown): value is InspectionPreviewRequest {
+  return isRecord(value) && value.kind === INSPECTION_PREVIEW_MESSAGE && isTabId(value.tabId) &&
+    isNonEmptyString(value.documentId) && isNonEmptyString(value.selectionId) && value.preview === 'padding' &&
+    typeof value.visible === 'boolean' && typeof value.sequence === 'number' &&
+    Number.isSafeInteger(value.sequence) && value.sequence >= 0 &&
+    (value.streamEpoch === undefined || (typeof value.streamEpoch === 'number' &&
+      Number.isSafeInteger(value.streamEpoch) && value.streamEpoch >= 0));
+}
+
+export function validateInspectionPreviewRequest(
+  value: unknown,
+  expectedTabId?: number,
+  expectedDocumentId?: string,
+): InspectionPreviewRequest | undefined {
+  if (!isInspectionPreviewRequest(value)) return undefined;
+  if (expectedTabId !== undefined && value.tabId !== expectedTabId) return undefined;
+  if (expectedDocumentId !== undefined && value.documentId !== expectedDocumentId) return undefined;
+  return value;
+}
+
+export function makePreviewResponse(
+  request: InspectionPreviewRequest,
+  ok: boolean,
+): InspectionPreviewResponse {
+  return {
+    kind: INSPECTION_PREVIEW_MESSAGE, ok, tabId: request.tabId, documentId: request.documentId,
+    sequence: request.sequence,
+    ...(request.streamEpoch === undefined ? {} : { streamEpoch: request.streamEpoch }),
+  };
+}
+
+export function validateInspectionPreviewResponse(value: unknown): InspectionPreviewResponse | undefined {
+  if (!isRecord(value) || value.kind !== INSPECTION_PREVIEW_MESSAGE || typeof value.ok !== 'boolean' ||
+    !isTabId(value.tabId) || !isNonEmptyString(value.documentId) || typeof value.sequence !== 'number' ||
+    !Number.isSafeInteger(value.sequence) || value.sequence < 0 ||
+    (value.streamEpoch !== undefined && (typeof value.streamEpoch !== 'number' ||
+      !Number.isSafeInteger(value.streamEpoch) || value.streamEpoch < 0))) return undefined;
+  return value as unknown as InspectionPreviewResponse;
 }
 
 function isInspectionRequest(value: unknown): value is InspectionRequest {
@@ -101,6 +169,7 @@ function isInspectionIdentity(value: unknown): value is InspectionIdentity {
 function isInspectionState(value: unknown): value is InspectionState {
   return isRecord(value) && isInspectionStatus(value.status) && isInspectionIdentity(value.identity) &&
     typeof value.revision === 'number' && Number.isSafeInteger(value.revision) && value.revision >= 0 &&
+    (value.selection === undefined || (value.status === 'active' && isElementSnapshot(value.selection))) &&
     (value.error === undefined || typeof value.error === 'string');
 }
 
