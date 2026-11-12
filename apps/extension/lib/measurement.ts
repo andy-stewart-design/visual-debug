@@ -72,12 +72,15 @@ function labeledLine(
   start: MeasurementPoint,
   end: MeasurementPoint,
   text: string,
-  position: MeasurementPoint,
   viewport: MeasurementViewport | undefined,
 ): { line: MeasurementLine; label: MeasurementLabel } {
   return {
     line: { axis, start, end },
-    label: clampLabel({ text, position, axis }, viewport),
+    label: clampLabel({
+      text,
+      position: point(midpoint(start.x, end.x), midpoint(start.y, end.y)),
+      axis,
+    }, viewport),
   };
 }
 
@@ -107,7 +110,6 @@ function separationLayout(
       point(horizontalStart, horizontalY),
       point(horizontalEnd, horizontalY),
       formatCssPixelsWithUnit(horizontal.distance) ?? '',
-      point(midpoint(horizontalStart, horizontalEnd), horizontalY - 12),
       viewport,
     );
     const verticalResult = labeledLine(
@@ -115,7 +117,6 @@ function separationLayout(
       point(verticalX, horizontalY),
       point(verticalX, verticalY),
       formatCssPixelsWithUnit(vertical.distance) ?? '',
-      point(verticalX + 20, midpoint(horizontalY, verticalY)),
       viewport,
     );
     lines.push(horizontalResult.line, verticalResult.line);
@@ -135,7 +136,6 @@ function separationLayout(
       point(startX, y),
       point(endX, y),
       formatCssPixelsWithUnit(horizontal.distance) ?? '',
-      point(midpoint(startX, endX), y - 12),
       viewport,
     );
     lines.push(resultLine.line);
@@ -154,7 +154,6 @@ function separationLayout(
       point(x, startY),
       point(x, endY),
       formatCssPixelsWithUnit(vertical.distance) ?? '',
-      point(x + 20, midpoint(startY, endY)),
       viewport,
     );
     lines.push(resultLine.line);
@@ -182,7 +181,6 @@ function containmentLayout(
       point(outer.left, innerCenterY),
       point(inner.left, innerCenterY),
       formatCssPixelsWithUnit(result.insets.left) ?? '',
-      point(midpoint(outer.left, inner.left), innerCenterY - 12),
       viewport,
     ),
     labeledLine(
@@ -190,7 +188,6 @@ function containmentLayout(
       point(innerCenterX, outer.top),
       point(innerCenterX, inner.top),
       formatCssPixelsWithUnit(result.insets.top) ?? '',
-      point(innerCenterX + 20, midpoint(outer.top, inner.top)),
       viewport,
     ),
     labeledLine(
@@ -198,7 +195,6 @@ function containmentLayout(
       point(inner.right, innerCenterY),
       point(outer.right, innerCenterY),
       formatCssPixelsWithUnit(result.insets.right) ?? '',
-      point(midpoint(inner.right, outer.right), innerCenterY - 12),
       viewport,
     ),
     labeledLine(
@@ -206,7 +202,6 @@ function containmentLayout(
       point(innerCenterX, inner.bottom),
       point(innerCenterX, outer.bottom),
       formatCssPixelsWithUnit(result.insets.bottom) ?? '',
-      point(innerCenterX + 20, midpoint(inner.bottom, outer.bottom)),
       viewport,
     ),
   ];
