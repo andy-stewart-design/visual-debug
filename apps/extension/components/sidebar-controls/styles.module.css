@@ -1,71 +1,83 @@
 .header {
-  display: flex;
-  align-items: center;
-  flex-wrap: wrap;
-  gap: 8px;
-  min-height: 32px;
+    display: flex;
+    align-items: center;
+    min-block-size: 2rem;
+    padding-inline: 0.75rem;
+    border-block-end: 1px solid rgb(255 255 255 / 0.15);
 }
 
 .toggle {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  min-height: 28px;
-  font-weight: 600;
-  cursor: pointer;
-}
+    flex: 1 0 0;
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    font-weight: 600;
+    cursor: pointer;
+    user-select: none;
 
-.toggle input {
-  margin: 0;
-}
+    & > span {
+        flex: 1 0 0;
+    }
 
-.toggle input:disabled {
-  cursor: not-allowed;
+    input {
+        margin: 0;
+    }
 }
 
 .loading {
-  width: 12px;
-  height: 12px;
-  border: 2px solid #cbd5e1;
-  border-top-color: #2563eb;
-  border-radius: 50%;
-  animation: spin .8s linear infinite;
+    flex: 0 1 12px;
+    display: inline-flex;
+    width: 12px;
+    height: 12px;
+    border: 2px solid #cbd5e1;
+    border-top-color: #2563eb;
+    border-radius: 50%;
+    animation:
+        fade-in 0s ease-out both,
+        spin 0.8s linear infinite;
+    animation-delay: 200ms, 0ms;
 }
 
 .retry {
-  min-height: 24px;
-  padding: 2px 7px;
-  border: 1px solid #94a3b8;
-  border-radius: 4px;
-  background: white;
-  color: inherit;
-  font: inherit;
-  font-size: 12px;
-  cursor: pointer;
+    min-height: 24px;
+    padding: 2px 7px;
+    border: 1px solid #94a3b8;
+    border-radius: 4px;
+    background: white;
+    color: inherit;
+    font: inherit;
+    font-size: 12px;
+    cursor: pointer;
 }
 
 .retry:disabled {
-  cursor: not-allowed;
-  opacity: .5;
+    cursor: not-allowed;
+    opacity: 0.5;
 }
 
 .error,
 .guidance {
-  flex-basis: 100%;
-  margin: 0;
-  font-size: 12px;
+    flex-basis: 100%;
+    margin: 0;
+    font-size: 12px;
 }
 
 .error {
-  color: #a61b1b;
+    color: #a61b1b;
 }
 
 .guidance {
-  color: #475569;
+    color: #475569;
+}
+
+@keyframes fade-in {
+    from {
+        opacity: 0;
+    }
 }
 
 @keyframes spin {
-  to {
-    transform: rotate(360deg);
-  }
+    to {
+        transform: rotate(360deg);
+    }
 }

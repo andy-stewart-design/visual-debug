@@ -1,6 +1,6 @@
-import type { Accessor } from 'solid-js';
-import type { SidebarPresentation } from '../../lib/sidebar-state';
-import s from './styles.module.css';
+import type { Accessor } from "solid-js";
+import type { SidebarPresentation } from "../../lib/sidebar-state";
+import s from "./styles.module.css";
 
 type SidebarControlsProps = {
   presentation: Accessor<SidebarPresentation>;
@@ -13,27 +13,34 @@ type SidebarControlsProps = {
 export default function SidebarControls(props: SidebarControlsProps) {
   const presentation = () => props.presentation();
   const actions = () => presentation().actions;
-  const isBusy = () => presentation().status === 'pending';
+  const isBusy = () => presentation().status === "pending";
   const canToggle = () => actions().canStart || actions().canStop;
 
   return (
     <header class={s.header} aria-busy={isBusy()}>
       <label class={s.toggle}>
+        <span>
+          Active {isBusy() && <span class={s.loading} aria-label="Loading" />}
+        </span>
         <input
           type="checkbox"
-          checked={presentation().status === 'active'}
+          checked={presentation().status === "active"}
           disabled={isBusy() || !canToggle()}
           onChange={(event) => {
             if (event.currentTarget.checked) props.onStart();
             else props.onStop();
           }}
         />
-        <span>Active</span>
-        {isBusy() && <span class={s.loading} aria-label="Loading" />}
       </label>
 
-      {presentation().error && <p class={s.error} role="alert">{presentation().error}</p>}
-      {presentation().guidance && <p class={s.guidance}>{presentation().guidance}</p>}
+      {presentation().error && (
+        <p class={s.error} role="alert">
+          {presentation().error}
+        </p>
+      )}
+      {presentation().guidance && (
+        <p class={s.guidance}>{presentation().guidance}</p>
+      )}
       {props.connectionError() && (
         <button
           class={s.retry}
