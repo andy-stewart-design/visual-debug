@@ -1,27 +1,56 @@
-import type { Accessor } from 'solid-js';
-import type { SidebarActions } from '../../lib/sidebar-state';
-import s from './styles.module.css';
+import type { Accessor } from "solid-js";
+import type { SidebarPresentation } from "../../lib/sidebar-state";
+import s from "./styles.module.css";
 
 type SidebarControlsProps = {
-  actions: Accessor<SidebarActions>;
+  presentation: Accessor<SidebarPresentation>;
+  connectionError: Accessor<string | undefined>;
   onStart: () => void;
   onStop: () => void;
   onRefresh: () => void;
 };
 
 export default function SidebarControls(props: SidebarControlsProps) {
-  const actions = () => props.actions();
+  const presentation = () => props.presentation();
+  const actions = () => presentation().actions;
+  const isBusy = () => presentation().status === "pending";
+  const canToggle = () => actions().canStart || actions().canStop;
+
   return (
-    <div class={s.actions}>
-      <button class={s.primary} type="button" onClick={props.onStart} disabled={!actions().canStart}>
-        {actions().startLabel}
-      </button>
-      <button class={s.secondary} type="button" onClick={props.onStop} disabled={!actions().canStop}>
-        {actions().stopLabel}
-      </button>
-      <button class={s.refresh} type="button" onClick={props.onRefresh} disabled={!actions().canRefresh}>
-        {actions().refreshLabel}
-      </button>
-    </div>
+    <header class={s.header} aria-busy={isBusy()}>
+      <label class={s.toggle}>
+        <span>
+          Active {isBusy() && <span class={s.loading} aria-label="Loading" />}
+        </span>
+        <input
+          type="checkbox"
+          checked={presentation().status === "active"}
+          disabled={isBusy() || !canToggle()}
+          onChange={(event) => {
+            if (event.currentTarget.checked) props.onStart();
+            else props.onStop();
+          }}
+        />
+      </label>
+
+      {presentation().error && (
+        <p class={s.error} role="alert">
+          {presentation().error}
+        </p>
+      )}
+      {presentation().guidance && (
+        <p class={s.guidance}>{presentation().guidance}</p>
+      )}
+      {props.connectionError() && (
+        <button
+          class={s.retry}
+          type="button"
+          onClick={props.onRefresh}
+          disabled={!actions().canRefresh}
+        >
+          Retry
+        </button>
+      )}
+    </header>
   );
 }

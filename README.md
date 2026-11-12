@@ -26,13 +26,13 @@ Stop the dev processes with Ctrl+C. WXT's launcher may show a Chrome warning abo
 
 ## Inspect and measure
 
-1. Open the sidebar with the extension toolbar icon; this also starts inspection on the current page. Opening through the browser's sidebar UI only shows status.
-2. On an ordinary HTTP/HTTPS tab with browser-granted site access, use **Start/restart** in the sidebar. New tabs show **Stopped** with Start available; they do not need a separate toolbar click.
+1. Open the sidebar with the extension toolbar icon; this also starts inspection on the current page. Opening through the browser's sidebar UI only shows the current-tab control.
+2. On an ordinary HTTP/HTTPS tab with browser-granted site access, use the **Active** checkbox in the sidebar to start inspection. New tabs remain inactive until the checkbox is enabled; it is not a global extension switch.
 3. Hover to preview an element; click to select an anchor. Primary pointer actions select instead of activating page controls.
 4. Hover a different element and hold **Option/Alt** to measure. Release the key to return to quiet outlines. Option-click does not replace the anchor; Alt+wheel is consumed while inspecting to prevent Firefox history navigation.
-5. Stop with **Escape** on the page or **Stop/Exit** in the sidebar. Closing the sidebar stops all retained inspection sessions in that window, without affecting another window. Clicking the toolbar again starts/focuses inspection; it is not a Stop toggle.
+5. Stop with **Escape** on the page or by clearing **Active** in the sidebar. Closing the sidebar stops all retained inspection sessions in that window, without affecting another window. Clicking the toolbar again starts/focuses inspection; it is not a Stop toggle.
 
-Hovering the anchor itself or measuring without an anchor shows no inter-element measurement. Losing window focus clears measurement mode; press Option freshly after returning. Switching tabs preserves each tab's state without starting inspection elsewhere. Reloading stops inspection; with site access still granted, sidebar Start can inspect the replacement page without a toolbar click. Refresh status and native sidebar reopening never start inspection.
+Hovering the anchor itself or measuring without an anchor shows no inter-element measurement. Losing window focus clears measurement mode; press Option freshly after returning. Switching tabs preserves each tab's state without starting inspection elsewhere. Reloading stops inspection; with site access still granted, the sidebar Active checkbox can inspect the replacement page without a toolbar click. Reopening the native sidebar never starts inspection.
 
 Measurements use CSS pixels and rendered, axis-aligned border boxes—not text glyph edges, physical screen pixels, or CSS margin/padding declarations. Containment shows edge insets, touching can show zero, and overlapping boxes show an overlap indication. Rotation is measured by the resulting axis-aligned bounds.
 
@@ -58,7 +58,7 @@ Use **`chrome-mv3`**, not `chrome-mv3-dev`. In the folder picker, Cmd+Shift+G le
 
 For Firefox Developer Edition, build with `pnpm --filter @visual-debug/extension build:firefox`, open `about:debugging#/runtime/this-firefox`, choose **Load Temporary Add-on**, and select `apps/extension/.output/firefox-mv2/manifest.json`. Use **Reload** there after rebuilding and reload test tabs. Temporary installation ends when Firefox closes.
 
-The browser may require approval for the new website-access permission during installation/update or in the extension's site-access settings. An unpacked/temporary reload does not necessarily show a prompt. If an ordinary site is unavailable, allow the extension access to that site (or all HTTP/HTTPS sites), then use **Refresh status** and **Start/restart**. The toolbar remains a temporary-access fallback where the browser permits it. The declared policy is broader read/change access to HTTP(S) sites because approval is browser-managed; the extension only performs inspection on demand and does not claim to enforce a narrower permission boundary outside its own code.
+The browser may require approval for the new website-access permission during installation/update or in the extension's site-access settings. An unpacked/temporary reload does not necessarily show a prompt. If an ordinary site is unavailable, allow the extension access to that site (or all HTTP/HTTPS sites), then reopen the sidebar and use **Active**. The toolbar remains a temporary-access fallback where the browser permits it. The declared policy is broader read/change access to HTTP(S) sites because approval is browser-managed; the extension only performs inspection on demand and does not claim to enforce a narrower permission boundary outside its own code.
 
 Production outputs are `apps/extension/.output/chrome-mv3/` and `apps/extension/.output/firefox-mv2/`. Chrome loads the former as an unpacked MV3 extension; Firefox Developer Edition loads the latter temporarily from its manifest. Build success and manifest inspection do not prove native browser behavior; final native acceptance is recorded as the user's report for the current production builds.
 

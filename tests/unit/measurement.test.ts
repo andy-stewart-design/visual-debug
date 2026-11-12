@@ -10,10 +10,10 @@ const rectangle = (left: number, top: number, width: number, height: number): Re
 });
 
 describe('createMeasurementLayout', () => {
-  it('places a horizontal neighbor line on the common projection midpoint', () => {
+  it('centers a horizontal label on its line midpoint', () => {
     expect(createMeasurementLayout(rectangle(0, 0, 100, 100), rectangle(140, 0, 100, 100))).toEqual({
       lines: [{ axis: 'horizontal', start: { x: 100, y: 50 }, end: { x: 140, y: 50 } }],
-      labels: [{ text: '40px', position: { x: 120, y: 38 }, axis: 'horizontal' }],
+      labels: [{ text: '40px', position: { x: 120, y: 50 }, axis: 'horizontal' }],
     });
   });
 
@@ -24,8 +24,8 @@ describe('createMeasurementLayout', () => {
         { axis: 'vertical', start: { x: 140, y: 100 }, end: { x: 140, y: 160 } },
       ],
       labels: [
-        { text: '40px', position: { x: 120, y: 88 }, axis: 'horizontal' },
-        { text: '60px', position: { x: 160, y: 130 }, axis: 'vertical' },
+        { text: '40px', position: { x: 120, y: 100 }, axis: 'horizontal' },
+        { text: '60px', position: { x: 140, y: 130 }, axis: 'vertical' },
       ],
     });
   });
@@ -37,8 +37,8 @@ describe('createMeasurementLayout', () => {
         { axis: 'vertical', start: { x: 100, y: 160 }, end: { x: 100, y: 100 } },
       ],
       labels: [
-        { text: '40px', position: { x: 120, y: 148 }, axis: 'horizontal' },
-        { text: '60px', position: { x: 120, y: 130 }, axis: 'vertical' },
+        { text: '40px', position: { x: 120, y: 160 }, axis: 'horizontal' },
+        { text: '60px', position: { x: 100, y: 130 }, axis: 'vertical' },
       ],
     });
   });
@@ -52,6 +52,12 @@ describe('createMeasurementLayout', () => {
       { axis: 'vertical', start: { x: 45, y: 0 }, end: { x: 45, y: 30 } },
       { axis: 'horizontal', start: { x: 70, y: 60 }, end: { x: 200, y: 60 } },
       { axis: 'vertical', start: { x: 45, y: 90 }, end: { x: 45, y: 200 } },
+    ]);
+    expect(layout?.labels).toEqual([
+      { text: '20px', position: { x: 10, y: 60 }, axis: 'horizontal' },
+      { text: '30px', position: { x: 45, y: 15 }, axis: 'vertical' },
+      { text: '130px', position: { x: 135, y: 60 }, axis: 'horizontal' },
+      { text: '110px', position: { x: 45, y: 145 }, axis: 'vertical' },
     ]);
 
     const touchingInsets = createMeasurementLayout(rectangle(0, 0, 100, 100), rectangle(0, 20, 100, 40));
