@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
+  acceptSidebarEditAck,
   acceptSidebarView,
   beginSidebarCommand,
   beginSidebarConnection,
@@ -118,6 +119,35 @@ describe('sidebar state presentation', () => {
     expect(queried.pending).toBe('query');
     expect(queried.view?.status).toBe('inactive');
     expect(getSidebarPresentation(queried).status).toBe('pending');
+  });
+
+  it('reconciles an edit acknowledgement before its lifecycle state event', () => {
+    const initial = view('active', 3, 2);
+    const selected = selection('selected');
+    const current = withView({ ...initial, selection: selected, state: { ...initial.state!, selection: selected } });
+    const acknowledged = selection('selected');
+    acknowledged.computedStyle.padding.top = '8px';
+    const next = acceptSidebarEditAck(current, {
+      kind: 'visual-debug:style-edit', ok: true, tabId: 3, documentId: 'doc-a', selectionId: 'selected',
+      editId: 'edit-top', order: 1, property: 'padding', side: 'top',
+      state: { ...current.view!.state!, revision: 3, selection: acknowledged },
+    }, guard);
+    expect(next.view?.state?.revision).toBe(3);
+    expect(next.view?.selection?.computedStyle.padding.top).toBe('8px');
+  });
+
+  it('ignores a stale rejected acknowledgement without changing selection', () => {
+    const old = selection('old');
+    const currentSelection = selection('current');
+    const currentView = view('active', 3, 5);
+    const current = withView({ ...currentView, selection: currentSelection, state: { ...currentView.state!, selection: currentSelection } });
+    const next = acceptSidebarEditAck(current, {
+      kind: 'visual-debug:style-edit', ok: false, tabId: 3, documentId: 'doc-a', selectionId: 'old',
+      editId: 'edit-old', order: 1, property: 'padding', side: 'top', error: 'The selected element is no longer current.',
+      state: { ...current.view!.state!, revision: 6, selection: old },
+    }, guard);
+    expect(next).toBe(current);
+    expect(next.view?.selection?.selectionId).toBe('current');
   });
 
   it('keeps selection snapshots aligned with the newest document revision', () => {

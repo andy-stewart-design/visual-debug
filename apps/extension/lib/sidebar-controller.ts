@@ -5,9 +5,21 @@ import {
   type InspectionState, type InspectionStatus,
 } from './inspection-protocol';
 import { isElementSnapshot, type ElementSnapshot } from './element-snapshot';
+import { PADDING_SIDES, type PaddingSide, type StyleEditRequest } from './style-edit';
+import { makeStyleEditResponse, type StyleEditResponse } from './inspection-protocol';
 
 export const SIDEBAR_PORT = 'visual-debug:sidebar';
 export type SidebarOperation = 'start' | 'stop' | 'query';
+export interface SidebarStyleEditIntent {
+  editId: string;
+  order: number;
+  tabId: number;
+  documentId: string;
+  selectionId: string;
+  property: 'padding';
+  side: PaddingSide;
+  value: number;
+}
 export interface SidebarPreviewIntent {
   tabId: number;
   documentId: string;
@@ -50,6 +62,17 @@ type WindowRecord = {
 function record(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null;
 }
+function isSidebarStyleEditIntent(value: unknown): value is SidebarStyleEditIntent {
+  return record(value) && typeof value.editId === 'string' && value.editId.length > 0 &&
+    typeof value.order === 'number' && Number.isSafeInteger(value.order) && value.order >= 0 && isTabId(value.tabId) &&
+    typeof value.documentId === 'string' && value.documentId.length > 0 && typeof value.selectionId === 'string' && value.selectionId.length > 0 &&
+    value.property === 'padding' && typeof value.side === 'string' && PADDING_SIDES.includes(value.side as PaddingSide) &&
+    typeof value.value === 'number' && Number.isFinite(value.value) && value.value >= 0;
+}
+export function validateSidebarStyleEditIntent(value: unknown): SidebarStyleEditIntent | undefined {
+  return isSidebarStyleEditIntent(value) ? value : undefined;
+}
+
 function isSidebarPreviewIntent(value: unknown): value is SidebarPreviewIntent {
   return record(value) && isTabId(value.tabId) && typeof value.documentId === 'string' && value.documentId.length > 0 &&
     typeof value.selectionId === 'string' && value.selectionId.length > 0 && typeof value.visible === 'boolean' &&
@@ -80,7 +103,7 @@ const GUIDANCE = 'Allow this extension site access in the browser, then click St
 
 export function createSidebarController(options: {
   activation: Pick<ActivationController, 'start' | 'stop' | 'query' | 'invalidate'> &
-    Partial<Pick<ActivationController, 'preview'>>;
+    Partial<Pick<ActivationController, 'preview' | 'edit'>>;
   getActiveTab(windowId: number): Promise<Tab | undefined>;
   getTabs(windowId: number): Promise<Tab[]>;
   getTab(tabId: number): Promise<Tab | undefined>;
@@ -609,5 +632,27 @@ export function createSidebarController(options: {
     const accepted = remember(value, state, known);
     await render(sender.windowId, sender.tabId, epoch, value.viewVersion, fromState(sender.windowId, accepted));
   };
-  return { connect, command, openAndStart, refresh, close, navigated, stateChanged, preview };
+  const edit = async (id: number, token: number, intent: SidebarStyleEditIntent): Promise<StyleEditResponse | undefined> => {
+    const value = get(id);
+    const epoch = value.epoch;
+    if (!options.activation.edit || !current(value, epoch, token)) return undefined;
+    const active = await options.getActiveTab(id);
+    if (!current(value, epoch, token) || active?.id !== intent.tabId || active.windowId !== id) return undefined;
+    const known = value.known.get(intent.tabId);
+    const request: StyleEditRequest = {
+      kind: 'visual-debug:style-edit', tabId: intent.tabId, documentId: intent.documentId,
+      selectionId: intent.selectionId, editId: intent.editId, order: intent.order,
+      property: intent.property, side: intent.side, value: intent.value,
+    };
+    if (!known || known.identity.documentId !== intent.documentId || known.status !== 'active' ||
+      known.selection?.selectionId !== intent.selectionId) {
+      return makeStyleEditResponse(request, false, 'The selected element is no longer current.', known);
+    }
+    try {
+      return await options.activation.edit(intent.tabId, request);
+    } catch (error) {
+      return makeStyleEditResponse(request, false, error instanceof Error ? error.message : String(error), value.known.get(intent.tabId));
+    }
+  };
+  return { connect, command, openAndStart, refresh, close, navigated, stateChanged, preview, edit };
 }

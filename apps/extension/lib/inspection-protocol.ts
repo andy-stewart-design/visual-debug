@@ -1,4 +1,7 @@
 import { isElementSnapshot, type ElementSnapshot } from './element-snapshot';
+import { PADDING_SIDES, type PaddingSide, type StyleEditRequest } from './style-edit';
+
+export const STYLE_EDIT_MESSAGE = 'visual-debug:style-edit';
 
 export const INSPECTION_MESSAGE = 'visual-debug:inspection';
 export const INSPECTION_STATE_MESSAGE = 'visual-debug:inspection-state';
@@ -68,6 +71,20 @@ export interface InspectionPreviewResponse {
   streamEpoch?: number;
 }
 
+export interface StyleEditResponse {
+  kind: typeof STYLE_EDIT_MESSAGE;
+  ok: boolean;
+  tabId: number;
+  documentId: string;
+  selectionId: string;
+  editId: string;
+  order: number;
+  property: 'padding';
+  side: PaddingSide;
+  state?: InspectionState;
+  error?: string;
+}
+
 export interface MessageSenderLike {
   id?: string;
   frameId?: number;
@@ -95,6 +112,47 @@ export function isInspectionStatus(value: unknown): value is InspectionStatus {
 
 export function isInspectionOperation(value: unknown): value is InspectionOperation {
   return typeof value === 'string' && INSPECTION_OPERATIONS.has(value);
+}
+
+function isStyleEditRequest(value: unknown): value is StyleEditRequest {
+  return isRecord(value) && value.kind === STYLE_EDIT_MESSAGE && isTabId(value.tabId) &&
+    isNonEmptyString(value.documentId) && isNonEmptyString(value.selectionId) && isNonEmptyString(value.editId) &&
+    typeof value.order === 'number' && Number.isSafeInteger(value.order) && value.order >= 0 &&
+    value.property === 'padding' && typeof value.side === 'string' && PADDING_SIDES.includes(value.side as PaddingSide) &&
+    typeof value.value === 'number' && Number.isFinite(value.value) && value.value >= 0;
+}
+
+export function validateStyleEditRequest(
+  value: unknown,
+  expectedTabId?: number,
+  expectedDocumentId?: string,
+): StyleEditRequest | undefined {
+  if (!isStyleEditRequest(value)) return undefined;
+  if (expectedTabId !== undefined && value.tabId !== expectedTabId) return undefined;
+  if (expectedDocumentId !== undefined && value.documentId !== expectedDocumentId) return undefined;
+  return value;
+}
+
+export function makeStyleEditResponse(request: StyleEditRequest, ok: boolean, error?: string, state?: InspectionState): StyleEditResponse {
+  return {
+    kind: STYLE_EDIT_MESSAGE, ok, tabId: request.tabId, documentId: request.documentId,
+    selectionId: request.selectionId, editId: request.editId, order: request.order,
+    property: request.property, side: request.side,
+    ...(state === undefined ? {} : { state }), ...(error === undefined ? {} : { error }),
+  };
+}
+
+export function validateStyleEditResponse(value: unknown): StyleEditResponse | undefined {
+  if (!isRecord(value) || value.kind !== STYLE_EDIT_MESSAGE || typeof value.ok !== 'boolean' ||
+    !isTabId(value.tabId) || !isNonEmptyString(value.documentId) || !isNonEmptyString(value.selectionId) ||
+    !isNonEmptyString(value.editId) || typeof value.order !== 'number' || !Number.isSafeInteger(value.order) || value.order < 0 ||
+    value.property !== 'padding' || typeof value.side !== 'string' || !PADDING_SIDES.includes(value.side as PaddingSide) ||
+    (value.state !== undefined && !isInspectionState(value.state)) || (value.error !== undefined && typeof value.error !== 'string')) return undefined;
+  if (!value.ok && value.error === undefined) return undefined;
+  if (value.ok && value.state === undefined) return undefined;
+  if (value.state && (value.state.identity.tabId !== value.tabId || value.state.identity.documentId !== value.documentId)) return undefined;
+  if (value.ok && (value.state?.status !== 'active' || value.state.selection?.selectionId !== value.selectionId)) return undefined;
+  return value as unknown as StyleEditResponse;
 }
 
 function isInspectionPreviewRequest(value: unknown): value is InspectionPreviewRequest {

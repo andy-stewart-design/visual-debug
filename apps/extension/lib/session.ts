@@ -4,6 +4,7 @@ import { createPicker, type Picker } from './picking';
 import { createModifierController } from './modifiers';
 import { createSelectionController } from './selection';
 import type { ElementSnapshot } from './element-snapshot';
+import { applyPaddingStyleEdit, type PaddingSide } from './style-edit';
 import { createTrackingController, type TrackingController } from './tracking';
 import { mountSessionUi } from './ui';
 
@@ -22,6 +23,7 @@ export type PaddingPreviewIntent = Readonly<{
 export type InspectionSession = {
   readonly isDisposed: boolean;
   setPaddingPreview?: (intent: PaddingPreviewIntent) => void;
+  editStyle?: (request: { selectionId: string; side: PaddingSide; value: number }) => { ok: boolean; selection?: ElementSnapshot; error?: string };
   dispose: () => void;
 };
 
@@ -140,6 +142,20 @@ export async function createInspectionSession(
         } else if (selection.state().anchor?.selectionId === intent.selectionId) {
           setPaddingPreview({ selectionId: intent.selectionId, sequence: intent.sequence });
         }
+      },
+      editStyle(request) {
+        if (disposed) return { ok: false, error: 'The inspection session is no longer active.' };
+        const target = selection.getTargets().anchor;
+        if (!target || !target.isConnected || selection.state().anchor?.selectionId !== request.selectionId) {
+          return { ok: false, error: 'The selected element is no longer current.' };
+        }
+        if (!applyPaddingStyleEdit(target, request.side, request.value)) {
+          return { ok: false, error: 'The selected element is no longer editable.' };
+        }
+        // Refresh synchronously so the page-computed value, dimensions, outlines,
+        // measurements, and padding preview all use the cascade's readback.
+        selection.refresh();
+        return { ok: true, selection: selection.state().anchor };
       },
       dispose,
     };

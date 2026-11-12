@@ -25,10 +25,10 @@ export default function BoxModelOverlay(props: BoxModelOverlayProps) {
   };
 
   return (
-    <Show when={geometry()}>
+    <Show when={geometry()} keyed>
       {(value) => {
-        const outer = value().outer;
-        const path = createPaddingPreviewPath(value());
+        const outer = value.outer;
+        const path = createPaddingPreviewPath(value);
         return (
           <svg
             class={s.region}

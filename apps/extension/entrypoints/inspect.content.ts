@@ -6,6 +6,7 @@ import {
   INSPECTION_STATE_MESSAGE,
   type InspectionState,
   validateInspectionPreviewRequest,
+  validateStyleEditRequest,
   validateInspectionRequest,
   validateSender,
 } from '../lib/inspection-protocol';
@@ -47,6 +48,11 @@ export default defineContentScript({
     const onMessage = (message: unknown, sender: Browser.runtime.MessageSender) => {
       if (shuttingDown || !validateSender(sender, browser.runtime.id)) return undefined;
       const boundTabId = controller?.getState().identity.tabId;
+      const edit = validateStyleEditRequest(message, boundTabId);
+      if (edit) {
+        if (!controller) return undefined;
+        return controller.handleStyleEdit(edit);
+      }
       const preview = validateInspectionPreviewRequest(message, boundTabId);
       if (preview) {
         if (!controller) return { kind: preview.kind, ok: false, tabId: preview.tabId, documentId: preview.documentId, sequence: preview.sequence };

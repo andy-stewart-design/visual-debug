@@ -7,13 +7,16 @@ import {
   type InspectionStatus,
   type InspectionPreviewRequest,
   type InspectionPreviewResponse,
-  makePreviewResponse,
+  makePreviewResponse, makeStyleEditResponse,
+  type StyleEditResponse,
 } from './inspection-protocol';
 import type { ElementSnapshot } from './element-snapshot';
+import type { PaddingSide, StyleEditRequest } from './style-edit';
 
 export interface ControllerSession {
   readonly isDisposed: boolean;
   setPaddingPreview?: (intent: { selectionId: string; visible: boolean; sequence: number; streamEpoch?: number }) => void;
+  editStyle?: (request: { selectionId: string; side: PaddingSide; value: number }) => { ok: boolean; selection?: ElementSnapshot; error?: string };
   dispose(): void;
 }
 
@@ -34,6 +37,7 @@ export interface InspectionController {
   dispose(): void;
   getState(): InspectionState;
   handlePreview(request: InspectionPreviewRequest): InspectionPreviewResponse;
+  handleStyleEdit(request: StyleEditRequest): Promise<StyleEditResponse>;
   selectionChanged(selection: ElementSnapshot | undefined): void;
 }
 
@@ -150,6 +154,11 @@ export function createInspectionController(options: InspectionControllerOptions)
     return respond(request, disposed || startEpoch !== epoch);
   };
 
+  const selectionChanged = (selection: ElementSnapshot | undefined) => {
+    if (disposed || !session || session.isDisposed || state.status !== 'active') return;
+    publish('active', undefined, selection);
+  };
+
   return {
     handle,
     invalidate: (reason = 'The inspection page context changed.') => {
@@ -174,9 +183,22 @@ export function createInspectionController(options: InspectionControllerOptions)
         sequence: request.sequence, streamEpoch: request.streamEpoch });
       return makePreviewResponse(request, true);
     },
-    selectionChanged: (selection) => {
-      if (disposed || !session || session.isDisposed || state.status !== 'active') return;
-      publish('active', undefined, selection);
+    handleStyleEdit: async (request) => {
+      if (disposed || request.tabId !== options.tabId || request.documentId !== options.documentId ||
+        !session || session.isDisposed || state.status !== 'active') {
+        return makeStyleEditResponse(request, false, 'The inspection document is no longer current.');
+      }
+      if (state.selection?.selectionId !== request.selectionId) {
+        return makeStyleEditResponse(request, false, 'The selected element is no longer current.');
+      }
+      const result = session.editStyle?.({ selectionId: request.selectionId, side: request.side, value: request.value });
+      if (!result?.ok) return makeStyleEditResponse(request, false, result?.error ?? 'The selected element could not be edited.', copy());
+      // The real session's selection refresh invokes the controller callback
+      // synchronously. Keep a fallback for small/future session adapters without
+      // publishing a duplicate revision on the normal path.
+      if (result.selection && state.selection !== result.selection) selectionChanged(result.selection);
+      return makeStyleEditResponse(request, true, undefined, copy());
     },
+    selectionChanged,
   };
 }

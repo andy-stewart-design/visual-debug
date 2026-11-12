@@ -14,7 +14,7 @@ export default function SidepanelApp() {
         onStop={connection.stop}
         onRefresh={connection.refresh}
       />
-      <PaddingSection presentation={connection.presentation} onPreview={connection.preview} />
+      <PaddingSection presentation={connection.presentation} onPreview={connection.preview} onEdit={connection.edit} editAck={connection.editAck} />
     </Sidebar>
   );
 }
