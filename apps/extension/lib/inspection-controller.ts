@@ -5,17 +5,29 @@ import {
   type InspectionResponse,
   type InspectionState,
   type InspectionStatus,
+  type InspectionPreviewRequest,
+  type InspectionPreviewResponse,
+  makePreviewResponse, makeStyleEditResponse,
+  type StyleEditResponse,
 } from './inspection-protocol';
+import type { ElementSnapshot } from './element-snapshot';
+import type { PaddingValues, StyleEditRequest } from './style-edit';
 
 export interface ControllerSession {
   readonly isDisposed: boolean;
+  setPaddingPreview?: (intent: { selectionId: string; visible: boolean }) => void;
+  editStyle?: (request: { selectionId: string; sides: PaddingValues }) => { ok: boolean; selection?: ElementSnapshot; error?: string };
   dispose(): void;
 }
 
 export interface InspectionControllerOptions {
   tabId: number;
   documentId: string;
-  createSession: (onDisposed: () => void, signal: AbortSignal) => Promise<ControllerSession>;
+  createSession: (
+    onDisposed: () => void,
+    signal: AbortSignal,
+    onSelection: (selection: ElementSnapshot | undefined) => void,
+  ) => Promise<ControllerSession>;
   onState?: (state: InspectionState) => void;
 }
 
@@ -24,6 +36,9 @@ export interface InspectionController {
   invalidate(reason?: string): void;
   dispose(): void;
   getState(): InspectionState;
+  handlePreview(request: InspectionPreviewRequest): InspectionPreviewResponse;
+  handleStyleEdit(request: StyleEditRequest): Promise<StyleEditResponse>;
+  selectionChanged(selection: ElementSnapshot | undefined): void;
 }
 
 type PendingStart = { epoch: number; abort: AbortController; promise: Promise<void> };
@@ -38,19 +53,29 @@ export function createInspectionController(options: InspectionControllerOptions)
   let state: InspectionState = { status: 'inactive', revision: 0, identity: identity(lastRequestId) };
   const copy = (): InspectionState => ({ ...state, identity: { ...state.identity } });
 
-  const publish = (status: InspectionStatus, error?: string) => {
-    state = { status, revision: state.revision + 1, identity: identity(lastRequestId), ...(error === undefined ? {} : { error }) };
+  const publish = (status: InspectionStatus, error?: string, selection?: ElementSnapshot) => {
+    state = {
+      status,
+      revision: state.revision + 1,
+      identity: identity(lastRequestId),
+      ...(selection === undefined ? {} : { selection }),
+      ...(error === undefined ? {} : { error }),
+    };
     // Observers must not break session ownership or turn successful creation
     // into an orphaned session when a receiver has gone away.
     try { options.onState?.(copy()); } catch { /* best-effort notification */ }
   };
 
   const respond = (request: InspectionRequest, superseded = false, error?: string): InspectionResponse => {
+    const snapshot = copy();
+    const { selection, ...withoutSelection } = snapshot;
+    const status: InspectionStatus = error === undefined ? (superseded ? 'inactive' : snapshot.status) : 'error';
     const next: InspectionState = {
-      ...copy(),
+      ...withoutSelection,
+      status,
       identity: identity(request.requestId),
-      ...(superseded ? { status: 'inactive' as const } : {}),
-      ...(error === undefined ? {} : { status: 'error' as const, error }),
+      ...(status === 'active' && selection === undefined ? {} : status === 'active' ? { selection } : {}),
+      ...(error === undefined ? {} : { error }),
     };
     return {
       kind: INSPECTION_MESSAGE,
@@ -88,7 +113,9 @@ export function createInspectionController(options: InspectionControllerOptions)
             session = undefined;
             if (!disposed) publish('inactive');
           }
-        }, abort.signal);
+        }, abort.signal, (selection) => {
+          if (!disposed && epoch === startEpoch && session === created) publish('active', undefined, selection);
+        });
         if (disposed || epoch !== startEpoch || selfDisposed || created.isDisposed) {
           created.dispose();
           if (!disposed && epoch === startEpoch) publish('inactive');
@@ -127,6 +154,11 @@ export function createInspectionController(options: InspectionControllerOptions)
     return respond(request, disposed || startEpoch !== epoch);
   };
 
+  const selectionChanged = (selection: ElementSnapshot | undefined) => {
+    if (disposed || !session || session.isDisposed || state.status !== 'active') return;
+    publish('active', undefined, selection);
+  };
+
   return {
     handle,
     invalidate: (reason = 'The inspection page context changed.') => {
@@ -143,5 +175,29 @@ export function createInspectionController(options: InspectionControllerOptions)
       publish('inactive');
     },
     getState: copy,
+    handlePreview: (request) => {
+      if (disposed || request.tabId !== options.tabId || request.documentId !== options.documentId ||
+        !session || session.isDisposed || state.status !== 'active') return makePreviewResponse(request, false);
+      if (request.visible && state.selection?.selectionId !== request.selectionId) return makePreviewResponse(request, false);
+      session.setPaddingPreview?.({ selectionId: request.selectionId, visible: request.visible });
+      return makePreviewResponse(request, true);
+    },
+    handleStyleEdit: async (request) => {
+      if (disposed || request.tabId !== options.tabId || request.documentId !== options.documentId ||
+        !session || session.isDisposed || state.status !== 'active') {
+        return makeStyleEditResponse(request, false, 'The inspection document is no longer current.');
+      }
+      if (state.selection?.selectionId !== request.selectionId) {
+        return makeStyleEditResponse(request, false, 'The selected element is no longer current.');
+      }
+      const result = session.editStyle?.({ selectionId: request.selectionId, sides: request.sides });
+      if (!result?.ok) return makeStyleEditResponse(request, false, result?.error ?? 'The selected element could not be edited.', copy());
+      // The real session's selection refresh invokes the controller callback
+      // synchronously. Keep a fallback for small/future session adapters without
+      // publishing a duplicate revision on the normal path.
+      if (result.selection && state.selection !== result.selection) selectionChanged(result.selection);
+      return makeStyleEditResponse(request, true, undefined, copy());
+    },
+    selectionChanged,
   };
 }

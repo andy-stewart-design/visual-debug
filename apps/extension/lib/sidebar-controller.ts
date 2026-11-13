@@ -4,21 +4,40 @@ import {
   INSPECTION_STATE_MESSAGE, isInspectionStatus, isTabId, validateInspectionStateMessage,
   type InspectionState, type InspectionStatus,
 } from './inspection-protocol';
+import { isElementSnapshot, type ElementSnapshot } from './element-snapshot';
+import { validatePaddingValues, type PaddingValues, type StyleEditRequest } from './style-edit';
+import { makeStyleEditResponse, type StyleEditResponse } from './inspection-protocol';
 
 export const SIDEBAR_PORT = 'visual-debug:sidebar';
 export type SidebarOperation = 'start' | 'stop' | 'query';
+export interface SidebarStyleEditIntent {
+  editId: string;
+  tabId: number;
+  documentId: string;
+  selectionId: string;
+  property: 'padding';
+  sides: PaddingValues;
+}
+export interface SidebarPreviewIntent {
+  tabId: number;
+  documentId: string;
+  selectionId: string;
+  visible: boolean;
+}
 export interface SidebarView {
   windowId: number;
   tabId?: number;
   status: InspectionStatus;
   canStart: boolean;
   error?: string;
+  selection?: ElementSnapshot;
   state?: InspectionState;
 }
 
 type Tab = { id: number; windowId: number };
 type Connection = { id: number; publish(view: SidebarView): void };
 type Pending = { tabId: number; cancelled?: boolean };
+type PreviewTarget = { tabId: number; documentId: string; selectionId: string };
 type WindowRecord = {
   epoch: number;
   viewVersion: number;
@@ -33,18 +52,41 @@ type WindowRecord = {
   tabEpochs: Map<number, number>;
   cleanup: Promise<void>;
   tabCleanup: Map<number, Promise<void>>;
+  previewTarget?: PreviewTarget & { sequence: number };
 };
 
 function record(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null;
 }
+function isSidebarStyleEditIntent(value: unknown): value is SidebarStyleEditIntent {
+  return record(value) && typeof value.editId === 'string' && value.editId.length > 0 &&
+    isTabId(value.tabId) &&
+    typeof value.documentId === 'string' && value.documentId.length > 0 && typeof value.selectionId === 'string' && value.selectionId.length > 0 &&
+    value.property === 'padding' && validatePaddingValues(value.sides);
+}
+export function validateSidebarStyleEditIntent(value: unknown): SidebarStyleEditIntent | undefined {
+  return isSidebarStyleEditIntent(value) ? value : undefined;
+}
+
+function isSidebarPreviewIntent(value: unknown): value is SidebarPreviewIntent {
+  return record(value) && isTabId(value.tabId) && typeof value.documentId === 'string' && value.documentId.length > 0 &&
+    typeof value.selectionId === 'string' && value.selectionId.length > 0 && typeof value.visible === 'boolean';
+}
+export function validateSidebarPreviewIntent(value: unknown): SidebarPreviewIntent | undefined {
+  return isSidebarPreviewIntent(value) ? value : undefined;
+}
+
 function isSidebarView(value: unknown): value is SidebarView {
   if (!record(value) || !isTabId(value.windowId) || !isInspectionStatus(value.status) || typeof value.canStart !== 'boolean') return false;
   if (value.tabId !== undefined && !isTabId(value.tabId)) return false;
   if (value.error !== undefined && typeof value.error !== 'string') return false;
+  if (value.selection !== undefined && !isElementSnapshot(value.selection)) return false;
   if (value.state !== undefined) {
     const event = validateInspectionStateMessage({ kind: INSPECTION_STATE_MESSAGE, state: value.state });
     if (!event || event.state.identity.tabId !== value.tabId || event.state.status !== value.status) return false;
+    if ((value.selection === undefined) !== (event.state.selection === undefined) ||
+      (value.selection !== undefined && event.state.selection !== undefined &&
+        value.selection.selectionId !== event.state.selection.selectionId)) return false;
   }
   return true;
 }
@@ -54,7 +96,8 @@ export function validateSidebarView(value: unknown): SidebarView | undefined {
 const GUIDANCE = 'Allow this extension site access in the browser, then click Start (or the extension toolbar button). Browser-internal pages cannot be inspected.';
 
 export function createSidebarController(options: {
-  activation: Pick<ActivationController, 'start' | 'stop' | 'query' | 'invalidate'>;
+  activation: Pick<ActivationController, 'start' | 'stop' | 'query' | 'invalidate'> &
+    Partial<Pick<ActivationController, 'preview' | 'edit'>>;
   getActiveTab(windowId: number): Promise<Tab | undefined>;
   getTabs(windowId: number): Promise<Tab[]>;
   getTab(tabId: number): Promise<Tab | undefined>;
@@ -64,10 +107,13 @@ export function createSidebarController(options: {
 }) {
   const windows = new Map<number, WindowRecord>();
   let connectionId = 0;
+  // One counter per background stream, not per sidebar window: a tab can move
+  // between windows while its content session remains alive.
+  let previewSequence = 0;
   const get = (id: number): WindowRecord => {
     let value = windows.get(id);
     if (!value) {
-      value = { epoch: 0, viewVersion: 0, closed: false, waiters: new Set(), owned: new Set(), pending: new Set(), known: new Map(), reconciling: new Set(), deferredStates: new Map(), tabEpochs: new Map(), cleanup: Promise.resolve(), tabCleanup: new Map() };
+      value = { epoch: 0, viewVersion: 0, closed: false, waiters: new Set(), owned: new Set(), pending: new Set(), known: new Map(), reconciling: new Set(), deferredStates: new Map(), tabEpochs: new Map(), cleanup: Promise.resolve(), tabCleanup: new Map(), previewTarget: undefined };
       windows.set(id, value);
     }
     return value;
@@ -79,7 +125,8 @@ export function createSidebarController(options: {
   };
   const fromState = (id: number, state: InspectionState): SidebarView => ({
     windowId: id, tabId: state.identity.tabId, status: state.status,
-    canStart: state.status === 'inactive' || state.status === 'error', state,
+    canStart: state.status === 'inactive' || state.status === 'error',
+    ...(state.selection === undefined ? {} : { selection: state.selection }), state,
     ...(state.error ? { error: state.error } : {}),
   });
   const remember = (value: WindowRecord, state: InspectionState, previous?: InspectionState): InspectionState => {
@@ -112,6 +159,80 @@ export function createSidebarController(options: {
       publish(value, fromState(id, known));
     } else publish(value, view);
   };
+  const clearPreview = async (value: WindowRecord): Promise<void> => {
+    const target = value.previewTarget;
+    value.previewTarget = undefined;
+    if (!target || !options.activation.preview) return;
+    const sequence = ++previewSequence;
+    try {
+      await options.activation.preview(target.tabId, {
+        kind: 'visual-debug:inspection-preview',
+        tabId: target.tabId,
+        documentId: target.documentId,
+        selectionId: target.selectionId,
+        preview: 'padding',
+        visible: false,
+        sequence,
+      });
+    } catch { /* navigation and stopped sessions already clear their UI */ }
+  };
+  const preview = async (id: number, token: number, intent: SidebarPreviewIntent): Promise<void> => {
+    const value = get(id);
+    if (!options.activation.preview || !current(value, value.epoch, token)) return;
+    const version = value.viewVersion;
+    const known = value.known.get(intent.tabId);
+    if (!known || known.identity.documentId !== intent.documentId || known.status !== 'active') return;
+
+    let target: (PreviewTarget & { sequence: number }) | undefined;
+    if (intent.visible) {
+      if (known.selection?.selectionId !== intent.selectionId) return;
+      target = {
+        tabId: intent.tabId,
+        documentId: intent.documentId,
+        selectionId: intent.selectionId,
+        sequence: ++previewSequence,
+      };
+      // Record the desired target before the active-tab lookup or transport
+      // send. A disconnect/refresh can therefore clear an in-flight show.
+      value.previewTarget = target;
+    } else {
+      target = value.previewTarget;
+      if (target && (target.tabId !== intent.tabId || target.documentId !== intent.documentId ||
+        target.selectionId !== intent.selectionId)) return;
+      // A clear is deliberately idempotent. The target can be absent when a
+      // show was rejected or lifecycle cleanup already consumed it.
+      if (!target) {
+        if (known.selection?.selectionId !== intent.selectionId) return;
+        target = { tabId: intent.tabId, documentId: intent.documentId, selectionId: intent.selectionId, sequence: ++previewSequence };
+      } else {
+        value.previewTarget = undefined;
+        target = { ...target, sequence: ++previewSequence };
+      }
+    }
+
+    if (!target) return;
+    const active = await options.getActiveTab(id);
+    if (!current(value, value.epoch, token) || value.viewVersion !== version ||
+      active?.id !== intent.tabId || active.windowId !== id ||
+      (intent.visible && value.previewTarget !== target)) return;
+    try {
+      await options.activation.preview(target.tabId, {
+        kind: 'visual-debug:inspection-preview',
+        tabId: target.tabId,
+        documentId: target.documentId,
+        selectionId: target.selectionId,
+        preview: 'padding',
+        visible: intent.visible,
+        sequence: target.sequence,
+      });
+    } catch (error) {
+      // A rejected show acknowledgement never becomes the recorded active
+      // target. A lifecycle clear may already have replaced this target.
+      if (intent.visible && value.previewTarget === target) value.previewTarget = undefined;
+      throw error;
+    }
+  };
+
   const query = async (id: number, tab: number, epoch: number): Promise<InspectionState | undefined> => {
     const value = get(id);
     const previous = value.known.get(tab);
@@ -128,6 +249,9 @@ export function createSidebarController(options: {
   ): Promise<boolean> => {
     const value = get(id);
     if (!current(value, epoch) || value.viewVersion !== version) return false;
+    // Mark the document unknown before any asynchronous checks, so a delayed
+    // event cannot be accepted while the missing-receiver result is settling.
+    value.reconciling.add(tab);
     let granted = false;
     try { granted = await options.canInject?.(tab) ?? false; } catch { granted = false; }
     if (!current(value, epoch) || value.viewVersion !== version) return false;
@@ -191,9 +315,11 @@ export function createSidebarController(options: {
 
   const refresh = async (id: number): Promise<void> => {
     const value = get(id);
+    // Invalidate preview work before waiting for its ordered clear.
+    const version = ++value.viewVersion;
+    await clearPreview(value);
     if (!value.connection || value.closed) return;
     const epoch = value.epoch;
-    const version = ++value.viewVersion;
     publish(value, { windowId: id, status: 'pending', canStart: false });
     let tab: Tab | undefined;
     let acknowledged: InspectionState | undefined;
@@ -208,7 +334,9 @@ export function createSidebarController(options: {
       }
       acknowledged = value.known.get(tab.id);
       const state = await query(id, tab.id, epoch);
-      if (state) await render(id, tab.id, epoch, version, fromState(id, state));
+      if (state) {
+        await render(id, tab.id, epoch, version, fromState(id, state));
+      }
     } catch (error) {
       if (tab && isMissingReceiver(error)) await showMissingReceiver(id, tab.id, epoch, version, acknowledged);
       else await showFailure(id, tab?.id, epoch, version, error, acknowledged);
@@ -221,7 +349,16 @@ export function createSidebarController(options: {
     value.connection = connection;
     for (const waiter of [...value.waiters]) waiter.resolve(connection);
     void refresh(id);
-    return { id: connection.id, disconnect() { if (value.connection === connection) value.connection = undefined; } };
+    return {
+      id: connection.id,
+      disconnect() {
+        if (value.connection === connection) {
+          value.connection = undefined;
+          ++value.viewVersion;
+          void clearPreview(value);
+        }
+      },
+    };
   };
   const stop = (value: WindowRecord, tab: number) => {
     // Invocation is synchronous: activation invalidates queued/in-flight starts
@@ -369,7 +506,8 @@ export function createSidebarController(options: {
     const value = get(id);
     const captured = new Set([...value.owned, ...[...value.pending].map((pending) => pending.tabId)]);
     value.epoch += 1;
-    value.viewVersion += 1;
+    ++value.viewVersion;
+    void clearPreview(value);
     value.closed = true;
     value.connection = undefined;
     for (const pending of value.pending) pending.cancelled = true;
@@ -377,6 +515,7 @@ export function createSidebarController(options: {
     value.owned.clear();
     value.reconciling.clear();
     value.deferredStates.clear();
+    value.previewTarget = undefined;
     for (const waiter of [...value.waiters]) waiter.reject(new Error('Sidebar was closed.'));
     const stopOwned = async (tab: number) => {
       const actual = await options.getTab(tab);
@@ -432,6 +571,12 @@ export function createSidebarController(options: {
       return;
     }
     const known = value.known.get(sender.tabId);
+    if (value.previewTarget && value.previewTarget.tabId === sender.tabId &&
+      (value.previewTarget.documentId !== state.identity.documentId || state.status !== 'active' ||
+        state.selection?.selectionId !== value.previewTarget.selectionId)) {
+      ++value.viewVersion;
+      void clearPreview(value);
+    }
     if ((value.reconciling.has(sender.tabId) || !known || known.identity.documentId !== state.identity.documentId) &&
       [...value.pending].some((pending) => pending.tabId === sender.tabId)) {
       // Discovery already belongs to the explicit start. Buffer events per
@@ -459,5 +604,27 @@ export function createSidebarController(options: {
     const accepted = remember(value, state, known);
     await render(sender.windowId, sender.tabId, epoch, value.viewVersion, fromState(sender.windowId, accepted));
   };
-  return { connect, command, openAndStart, refresh, close, navigated, stateChanged };
+  const edit = async (id: number, token: number, intent: SidebarStyleEditIntent): Promise<StyleEditResponse | undefined> => {
+    const value = get(id);
+    const epoch = value.epoch;
+    if (!options.activation.edit || !current(value, epoch, token)) return undefined;
+    const active = await options.getActiveTab(id);
+    if (!current(value, epoch, token) || active?.id !== intent.tabId || active.windowId !== id) return undefined;
+    const known = value.known.get(intent.tabId);
+    const request: StyleEditRequest = {
+      kind: 'visual-debug:style-edit', tabId: intent.tabId, documentId: intent.documentId,
+      selectionId: intent.selectionId, editId: intent.editId,
+      property: intent.property, sides: intent.sides,
+    };
+    if (!known || known.identity.documentId !== intent.documentId || known.status !== 'active' ||
+      known.selection?.selectionId !== intent.selectionId) {
+      return makeStyleEditResponse(request, false, 'The selected element is no longer current.', known);
+    }
+    try {
+      return await options.activation.edit(intent.tabId, request);
+    } catch (error) {
+      return makeStyleEditResponse(request, false, error instanceof Error ? error.message : String(error), value.known.get(intent.tabId));
+    }
+  };
+  return { connect, command, openAndStart, refresh, close, navigated, stateChanged, preview, edit };
 }

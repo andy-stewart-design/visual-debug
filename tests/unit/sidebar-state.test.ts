@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
+  acceptSidebarEditAck,
   acceptSidebarView,
   beginSidebarCommand,
   beginSidebarConnection,
@@ -13,6 +14,12 @@ import {
 import type { SidebarView } from '../../apps/extension/lib/sidebar-controller';
 
 const guard = { epoch: 1, token: 1 };
+const selection = (id: string) => ({
+  selectionId: id,
+  tagName: 'div',
+  box: { left: 0, top: 0, width: 10, height: 10 },
+  computedStyle: { padding: { top: '1px', right: '2px', bottom: '3px', left: '4px' } },
+});
 
 function connected(): SidebarState {
   return beginSidebarConnection(createSidebarState(9), guard);
@@ -112,6 +119,49 @@ describe('sidebar state presentation', () => {
     expect(queried.pending).toBe('query');
     expect(queried.view?.status).toBe('inactive');
     expect(getSidebarPresentation(queried).status).toBe('pending');
+  });
+
+  it('reconciles an edit acknowledgement before its lifecycle state event', () => {
+    const initial = view('active', 3, 2);
+    const selected = selection('selected');
+    const current = withView({ ...initial, selection: selected, state: { ...initial.state!, selection: selected } });
+    const acknowledged = selection('selected');
+    acknowledged.computedStyle.padding.top = '8px';
+    const next = acceptSidebarEditAck(current, {
+      kind: 'visual-debug:style-edit', ok: true, tabId: 3, documentId: 'doc-a', selectionId: 'selected',
+      editId: 'edit-top', property: 'padding', sides: { top: 8 },
+      state: { ...current.view!.state!, revision: 3, selection: acknowledged },
+    }, guard);
+    expect(next.view?.state?.revision).toBe(3);
+    expect(next.view?.selection?.computedStyle.padding.top).toBe('8px');
+  });
+
+  it('ignores a stale rejected acknowledgement without changing selection', () => {
+    const old = selection('old');
+    const currentSelection = selection('current');
+    const currentView = view('active', 3, 5);
+    const current = withView({ ...currentView, selection: currentSelection, state: { ...currentView.state!, selection: currentSelection } });
+    const next = acceptSidebarEditAck(current, {
+      kind: 'visual-debug:style-edit', ok: false, tabId: 3, documentId: 'doc-a', selectionId: 'old',
+      editId: 'edit-old', property: 'padding', sides: { top: 4 }, error: 'The selected element is no longer current.',
+      state: { ...current.view!.state!, revision: 6, selection: old },
+    }, guard);
+    expect(next).toBe(current);
+    expect(next.view?.selection?.selectionId).toBe('current');
+  });
+
+  it('keeps selection snapshots aligned with the newest document revision', () => {
+    const first = withView({ ...view('active', 3, 2), selection: selection('first'), state: {
+      ...view('active', 3, 2).state!, selection: selection('first'),
+    } });
+    const older = acceptSidebarView(first, { ...view('active', 3, 1), selection: selection('older'), state: {
+      ...view('active', 3, 1).state!, selection: selection('older'),
+    } }, guard);
+    expect(older).toBe(first);
+    const newer = acceptSidebarView(first, { ...view('active', 3, 3), selection: selection('newer'), state: {
+      ...view('active', 3, 3).state!, selection: selection('newer'),
+    } }, guard);
+    expect(newer.view?.selection?.selectionId).toBe('newer');
   });
 
   it('ignores retired connection views and older revisions in one document', () => {

@@ -1,4 +1,4 @@
-import type { InspectionStatus } from './inspection-protocol';
+import type { InspectionStatus, StyleEditResponse } from './inspection-protocol';
 import type { SidebarView } from './sidebar-controller';
 
 export type SidebarCommand = 'start' | 'stop' | 'query';
@@ -120,6 +120,41 @@ export function acceptSidebarView(
     (view.status === 'active' || view.status === 'pending') ? 'stop' :
     sameTab && state.pending === 'start' && view.status === 'pending' ? 'start' : undefined;
   return { ...state, view, pending, connectionError: undefined };
+}
+
+/**
+ * Apply the state carried by an edit acknowledgement only when the
+ * acknowledgement still belongs to the selected tab, document, and element.
+ * Unlike a lifecycle view, an acknowledgement is not allowed to establish a
+ * replacement active target: it may have been queued before a tab/document or
+ * selection change.
+ */
+export function acceptSidebarEditAck(
+  state: SidebarState,
+  response: StyleEditResponse,
+  guard: SidebarConnectionGuard,
+): SidebarState {
+  const current = state.view;
+  const currentState = current?.state;
+  const acknowledged = response.state;
+  if (state.windowId === undefined || current === undefined || currentState === undefined || acknowledged === undefined ||
+    current.tabId !== response.tabId || currentState.identity.documentId !== response.documentId ||
+    acknowledged.identity.tabId !== response.tabId || acknowledged.identity.documentId !== response.documentId) return state;
+  const currentSelection = current.selection ?? currentState.selection;
+  if (currentSelection?.selectionId !== response.selectionId) return state;
+  // Rejected edits may carry an inactive/error state without a selection. An
+  // active state must still describe the element targeted by this edit.
+  if (acknowledged.status === 'active' && acknowledged.selection?.selectionId !== response.selectionId) return state;
+  const view: SidebarView = {
+    windowId: state.windowId,
+    tabId: acknowledged.identity.tabId,
+    status: acknowledged.status,
+    canStart: acknowledged.status === 'inactive' || acknowledged.status === 'error',
+    ...(acknowledged.selection === undefined ? {} : { selection: acknowledged.selection }),
+    state: acknowledged,
+    ...(acknowledged.error === undefined ? {} : { error: acknowledged.error }),
+  };
+  return acceptSidebarView(state, view, guard);
 }
 
 export function beginSidebarCommand(state: SidebarState, command: SidebarCommand): SidebarState {

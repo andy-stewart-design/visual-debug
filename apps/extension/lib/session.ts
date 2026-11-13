@@ -1,12 +1,26 @@
+import { createSignal } from 'solid-js';
 import type { ContentScriptContext } from 'wxt/utils/content-script-context';
 import { createPicker, type Picker } from './picking';
 import { createModifierController } from './modifiers';
 import { createSelectionController } from './selection';
+import type { ElementSnapshot } from './element-snapshot';
+import { applyPaddingStyleEdit, type PaddingValues } from './style-edit';
 import { createTrackingController, type TrackingController } from './tracking';
 import { mountSessionUi } from './ui';
 
+export type PaddingPreview = Readonly<{
+  selectionId: string;
+}>;
+
+export type PaddingPreviewIntent = Readonly<{
+  selectionId: string;
+  visible: boolean;
+}>;
+
 export type InspectionSession = {
   readonly isDisposed: boolean;
+  setPaddingPreview?: (intent: PaddingPreviewIntent) => void;
+  editStyle?: (request: { selectionId: string; sides: PaddingValues }) => { ok: boolean; selection?: ElementSnapshot; error?: string };
   dispose: () => void;
 };
 
@@ -14,12 +28,15 @@ export async function createInspectionSession(
   ctx: ContentScriptContext,
   onDisposed: () => void,
   signal?: AbortSignal,
+  onSelection?: (selection: ElementSnapshot | undefined) => void,
 ): Promise<InspectionSession> {
   let disposed = false;
   let removeInvalidationListener: (() => void) | undefined;
   let sessionUi: Awaited<ReturnType<typeof mountSessionUi>> | undefined;
   let picker: Picker | undefined;
   let tracking: TrackingController | undefined;
+  let removeSelectionListener: (() => void) | undefined;
+  const [paddingPreview, setPaddingPreview] = createSignal<PaddingPreview | undefined>();
   const selection = createSelectionController();
 
   const dispose = () => {
@@ -33,6 +50,9 @@ export async function createInspectionSession(
     picker = undefined;
     modifiers.dispose();
     selection.dispose();
+    setPaddingPreview(undefined);
+    removeSelectionListener?.();
+    removeSelectionListener = undefined;
     removeInvalidationListener?.();
     removeInvalidationListener = undefined;
     sessionUi?.remove();
@@ -59,7 +79,7 @@ export async function createInspectionSession(
     signal?.addEventListener('abort', dispose, { once: true });
     window.addEventListener('keydown', onKeyDown, true);
     removeInvalidationListener = ctx.onInvalidated(dispose);
-    const mountedUi = await mountSessionUi(ctx, selection, modifiers.held);
+    const mountedUi = await mountSessionUi(ctx, selection, modifiers.held, paddingPreview);
     if (disposed || ctx.isInvalid) {
       mountedUi.remove();
       throw new Error('The inspection page context became invalid during startup.');
@@ -88,6 +108,10 @@ export async function createInspectionSession(
       throw new Error('The inspection UI was removed during startup.');
     }
     tracking = createdTracking;
+    removeSelectionListener = selection.subscribeSelection((next) => {
+      if (paddingPreview()?.selectionId !== next?.selectionId) setPaddingPreview(undefined);
+      onSelection?.(next);
+    });
 
     if (ctx.isInvalid || disposed) {
       dispose();
@@ -97,6 +121,28 @@ export async function createInspectionSession(
     return {
       get isDisposed() {
         return disposed;
+      },
+      setPaddingPreview(intent) {
+        if (disposed) return;
+        if (!intent.visible) {
+          setPaddingPreview(undefined);
+        } else if (selection.state().anchor?.selectionId === intent.selectionId) {
+          setPaddingPreview({ selectionId: intent.selectionId });
+        }
+      },
+      editStyle(request) {
+        if (disposed) return { ok: false, error: 'The inspection session is no longer active.' };
+        const target = selection.getTargets().anchor;
+        if (!target || !target.isConnected || selection.state().anchor?.selectionId !== request.selectionId) {
+          return { ok: false, error: 'The selected element is no longer current.' };
+        }
+        if (!applyPaddingStyleEdit(target, request.sides)) {
+          return { ok: false, error: 'The selected element is no longer editable.' };
+        }
+        // Refresh synchronously so the page-computed value, dimensions, outlines,
+        // measurements, and padding preview all use the cascade's readback.
+        selection.refresh();
+        return { ok: true, selection: selection.state().anchor };
       },
       dispose,
     };

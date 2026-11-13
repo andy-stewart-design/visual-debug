@@ -6,14 +6,22 @@ import {
   type InspectionOperation,
   type InspectionRequest,
   type InspectionResponse,
+  type InspectionPreviewRequest,
+  type StyleEditResponse,
   makeRequest,
+  makeStyleEditResponse,
   validateInspectionResponse,
+  validateInspectionPreviewResponse,
+  validateStyleEditResponse,
 } from './inspection-protocol';
+import { samePaddingValues, type StyleEditRequest } from './style-edit';
 
 const NEUTRAL_TITLE = 'Open sidebar and start inspection';
 
 export interface ActivationTransport {
   send(tabId: number, message: InspectionRequest): Promise<unknown>;
+  sendPreview?(tabId: number, message: InspectionPreviewRequest): Promise<unknown>;
+  sendStyleEdit?(tabId: number, message: StyleEditRequest): Promise<unknown>;
   inject(tabId: number): Promise<void>;
 }
 
@@ -29,6 +37,8 @@ export interface ActivationController {
   start(tabId: number, options?: { allowInjection?: boolean }): Promise<InspectionResponse>;
   stop(tabId: number): Promise<InspectionResponse>;
   query(tabId: number): Promise<InspectionResponse>;
+  preview(tabId: number, request: InspectionPreviewRequest): Promise<void>;
+  edit(tabId: number, request: StyleEditRequest): Promise<StyleEditResponse>;
 }
 
 export class InspectionSupersededError extends Error {
@@ -125,11 +135,64 @@ export function createActivationController(options: ActivationControllerOptions)
     queues.delete(tabId);
   };
 
+  const edit = (tabId: number, request: StyleEditRequest): Promise<StyleEditResponse> => {
+    if (!options.transport.sendStyleEdit || !Number.isSafeInteger(tabId) || tabId < 0 || request.tabId !== tabId) {
+      return Promise.reject(new Error('Style editing is unavailable.'));
+    }
+    const issuedEpoch = epoch(tabId);
+    const sendStyleEdit = options.transport.sendStyleEdit;
+    return run(tabId, async () => {
+      const guard = () => { if (issuedEpoch !== epoch(tabId)) throw new InspectionSupersededError(); };
+      guard();
+      const discovery = validateInspectionResponse(await options.transport.send(tabId, makeRequest('query', tabId, nextId())));
+      guard();
+      if (!discovery || !discovery.ok || discovery.identity.tabId !== tabId || discovery.state.identity.documentId !== request.documentId ||
+        discovery.state.status !== 'active' || discovery.state.selection?.selectionId !== request.selectionId) {
+        return makeStyleEditResponse(request, false, 'The selected element is no longer current.', discovery?.state);
+      }
+      const raw = await sendStyleEdit(tabId, request);
+      guard();
+      const response = validateStyleEditResponse(raw);
+      if (!response || response.tabId !== tabId || response.documentId !== request.documentId || response.selectionId !== request.selectionId ||
+        response.editId !== request.editId || !samePaddingValues(response.sides, request.sides)) throw new Error('Style edit returned an invalid or stale response.');
+      return response;
+    });
+  };
+
+  const preview = (tabId: number, request: InspectionPreviewRequest): Promise<void> => {
+    if (!options.transport.sendPreview) return Promise.resolve();
+    if (!Number.isSafeInteger(tabId) || tabId < 0 || request.tabId !== tabId) {
+      return Promise.reject(new Error('Invalid inspection preview tab ID.'));
+    }
+    const issuedEpoch = epoch(tabId);
+    return run(tabId, async () => {
+      const guard = () => {
+        if (issuedEpoch !== epoch(tabId)) throw new InspectionSupersededError();
+      };
+      guard();
+      const discovery = await options.transport.send(tabId, makeRequest('query', tabId, nextId()));
+      guard();
+      const current = validateInspectionResponse(discovery);
+      if (!current || !current.ok || current.identity.tabId !== tabId || current.state.identity.documentId !== request.documentId ||
+        current.state.status !== 'active') return;
+      const response = await options.transport.sendPreview!(tabId, request);
+      guard();
+      const validated = validateInspectionPreviewResponse(response);
+      if (!validated || validated.tabId !== tabId || validated.documentId !== request.documentId ||
+        validated.sequence !== request.sequence) {
+        throw new Error('Inspection preview returned an invalid response.');
+      }
+      if (!validated.ok) throw new Error('Inspection preview was rejected by the content script.');
+    });
+  };
+
   return {
     invalidate,
     start: (tabId, startOptions) => invoke(tabId, 'start', startOptions?.allowInjection ?? true),
     stop: (tabId) => invoke(tabId, 'stop'),
     query: (tabId) => invoke(tabId, 'query'),
+    edit,
+    preview,
   };
 }
 
@@ -155,6 +218,8 @@ export async function updateActionFeedback(tabId: number, error?: string): Promi
 export const inspectionActivation = createActivationController({
   transport: {
     send: (tabId, message) => browser.tabs.sendMessage(tabId, message, { frameId: 0 }),
+    sendPreview: (tabId, message) => browser.tabs.sendMessage(tabId, message, { frameId: 0 }),
+    sendStyleEdit: (tabId, message) => browser.tabs.sendMessage(tabId, message, { frameId: 0 }),
     inject: async (tabId) => {
       await browser.scripting.executeScript({ target: { tabId, frameIds: [0] }, files: ['/content-scripts/inspect.js'] });
     },

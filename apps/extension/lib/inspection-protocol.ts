@@ -1,6 +1,13 @@
+import { isElementSnapshot, type ElementSnapshot } from './element-snapshot';
+import { validatePaddingValues, type PaddingSide, type StyleEditRequest } from './style-edit';
+
+export const STYLE_EDIT_MESSAGE = 'visual-debug:style-edit';
+
 export const INSPECTION_MESSAGE = 'visual-debug:inspection';
 export const INSPECTION_STATE_MESSAGE = 'visual-debug:inspection-state';
+export const INSPECTION_PREVIEW_MESSAGE = 'visual-debug:inspection-preview';
 export type InspectionOperation = 'start' | 'stop' | 'query';
+export type InspectionPreviewKind = 'padding';
 export type InspectionStatus = 'pending' | 'active' | 'inactive' | 'unavailable' | 'error';
 
 export interface InspectionIdentity {
@@ -14,6 +21,8 @@ export interface InspectionState {
   identity: InspectionIdentity;
   /** Monotonic within a document, including unsolicited disposal events. */
   revision: number;
+  /** Page-owned, serializable data for the current selected anchor. */
+  selection?: ElementSnapshot;
   error?: string;
 }
 
@@ -38,6 +47,38 @@ export interface InspectionResponse {
 export interface InspectionStateMessage {
   kind: typeof INSPECTION_STATE_MESSAGE;
   state: InspectionState;
+}
+
+/** Transient sidebar intent. It is deliberately not part of InspectionState. */
+export interface InspectionPreviewRequest {
+  kind: typeof INSPECTION_PREVIEW_MESSAGE;
+  tabId: number;
+  documentId: string;
+  selectionId: string;
+  preview: InspectionPreviewKind;
+  visible: boolean;
+  sequence: number;
+}
+
+export interface InspectionPreviewResponse {
+  kind: typeof INSPECTION_PREVIEW_MESSAGE;
+  ok: boolean;
+  tabId: number;
+  documentId: string;
+  sequence: number;
+}
+
+export interface StyleEditResponse {
+  kind: typeof STYLE_EDIT_MESSAGE;
+  ok: boolean;
+  tabId: number;
+  documentId: string;
+  selectionId: string;
+  editId: string;
+  property: 'padding';
+  sides: Readonly<Partial<Record<PaddingSide, number>>>;
+  state?: InspectionState;
+  error?: string;
 }
 
 export interface MessageSenderLike {
@@ -67,6 +108,79 @@ export function isInspectionStatus(value: unknown): value is InspectionStatus {
 
 export function isInspectionOperation(value: unknown): value is InspectionOperation {
   return typeof value === 'string' && INSPECTION_OPERATIONS.has(value);
+}
+
+function isStyleEditRequest(value: unknown): value is StyleEditRequest {
+  return isRecord(value) && value.kind === STYLE_EDIT_MESSAGE && isTabId(value.tabId) &&
+    isNonEmptyString(value.documentId) && isNonEmptyString(value.selectionId) && isNonEmptyString(value.editId) &&
+    value.property === 'padding' && validatePaddingValues(value.sides);
+}
+
+export function validateStyleEditRequest(
+  value: unknown,
+  expectedTabId?: number,
+  expectedDocumentId?: string,
+): StyleEditRequest | undefined {
+  if (!isStyleEditRequest(value)) return undefined;
+  if (expectedTabId !== undefined && value.tabId !== expectedTabId) return undefined;
+  if (expectedDocumentId !== undefined && value.documentId !== expectedDocumentId) return undefined;
+  return value;
+}
+
+export function makeStyleEditResponse(request: StyleEditRequest, ok: boolean, error?: string, state?: InspectionState): StyleEditResponse {
+  return {
+    kind: STYLE_EDIT_MESSAGE, ok, tabId: request.tabId, documentId: request.documentId,
+    selectionId: request.selectionId, editId: request.editId,
+    property: request.property, sides: request.sides,
+    ...(state === undefined ? {} : { state }), ...(error === undefined ? {} : { error }),
+  };
+}
+
+export function validateStyleEditResponse(value: unknown): StyleEditResponse | undefined {
+  if (!isRecord(value) || value.kind !== STYLE_EDIT_MESSAGE || typeof value.ok !== 'boolean' ||
+    !isTabId(value.tabId) || !isNonEmptyString(value.documentId) || !isNonEmptyString(value.selectionId) ||
+    !isNonEmptyString(value.editId) || value.property !== 'padding' || !validatePaddingValues(value.sides) ||
+    (value.state !== undefined && !isInspectionState(value.state)) || (value.error !== undefined && typeof value.error !== 'string')) return undefined;
+  if (!value.ok && value.error === undefined) return undefined;
+  if (value.ok && value.state === undefined) return undefined;
+  if (value.state && (value.state.identity.tabId !== value.tabId || value.state.identity.documentId !== value.documentId)) return undefined;
+  if (value.ok && (value.state?.status !== 'active' || value.state.selection?.selectionId !== value.selectionId)) return undefined;
+  return value as unknown as StyleEditResponse;
+}
+
+function isInspectionPreviewRequest(value: unknown): value is InspectionPreviewRequest {
+  return isRecord(value) && value.kind === INSPECTION_PREVIEW_MESSAGE && isTabId(value.tabId) &&
+    isNonEmptyString(value.documentId) && isNonEmptyString(value.selectionId) && value.preview === 'padding' &&
+    typeof value.visible === 'boolean' && typeof value.sequence === 'number' &&
+    Number.isSafeInteger(value.sequence) && value.sequence >= 0;
+}
+
+export function validateInspectionPreviewRequest(
+  value: unknown,
+  expectedTabId?: number,
+  expectedDocumentId?: string,
+): InspectionPreviewRequest | undefined {
+  if (!isInspectionPreviewRequest(value)) return undefined;
+  if (expectedTabId !== undefined && value.tabId !== expectedTabId) return undefined;
+  if (expectedDocumentId !== undefined && value.documentId !== expectedDocumentId) return undefined;
+  return value;
+}
+
+export function makePreviewResponse(
+  request: InspectionPreviewRequest,
+  ok: boolean,
+): InspectionPreviewResponse {
+  return {
+    kind: INSPECTION_PREVIEW_MESSAGE, ok, tabId: request.tabId, documentId: request.documentId,
+    sequence: request.sequence,
+  };
+}
+
+export function validateInspectionPreviewResponse(value: unknown): InspectionPreviewResponse | undefined {
+  if (!isRecord(value) || value.kind !== INSPECTION_PREVIEW_MESSAGE || typeof value.ok !== 'boolean' ||
+    !isTabId(value.tabId) || !isNonEmptyString(value.documentId) || typeof value.sequence !== 'number' ||
+    !Number.isSafeInteger(value.sequence) || value.sequence < 0) return undefined;
+  return value as unknown as InspectionPreviewResponse;
 }
 
 function isInspectionRequest(value: unknown): value is InspectionRequest {
@@ -101,6 +215,7 @@ function isInspectionIdentity(value: unknown): value is InspectionIdentity {
 function isInspectionState(value: unknown): value is InspectionState {
   return isRecord(value) && isInspectionStatus(value.status) && isInspectionIdentity(value.identity) &&
     typeof value.revision === 'number' && Number.isSafeInteger(value.revision) && value.revision >= 0 &&
+    (value.selection === undefined || (value.status === 'active' && isElementSnapshot(value.selection))) &&
     (value.error === undefined || typeof value.error === 'string');
 }
 

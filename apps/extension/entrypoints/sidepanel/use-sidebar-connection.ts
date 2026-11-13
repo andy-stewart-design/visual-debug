@@ -5,7 +5,10 @@ import {
   validateSidebarView,
   type SidebarView,
 } from '../../lib/sidebar-controller';
+import { validateStyleEditResponse, type StyleEditResponse } from '../../lib/inspection-protocol';
+import { validatePaddingValues, type PaddingValues } from '../../lib/style-edit';
 import {
+  acceptSidebarEditAck,
   acceptSidebarView,
   beginSidebarCommand,
   beginSidebarConnection,
@@ -28,6 +31,9 @@ export type SidebarConnection = {
   start: () => void;
   stop: () => void;
   refresh: () => void;
+  preview: (visible: boolean) => void;
+  edit: (sides: PaddingValues) => string | undefined;
+  editAck: Accessor<StyleEditResponse | undefined>;
 };
 
 function isStateMessage(value: unknown): value is StateMessage {
@@ -37,6 +43,7 @@ function isStateMessage(value: unknown): value is StateMessage {
 
 export function useSidebarConnection(): SidebarConnection {
   const [model, setModel] = createSignal(createSidebarState());
+  const [editAck, setEditAck] = createSignal<StyleEditResponse | undefined>();
 
   let disposed = false;
   let windowId: number | undefined;
@@ -47,6 +54,10 @@ export function useSidebarConnection(): SidebarConnection {
   let reconnectTimer: ReturnType<typeof setTimeout> | undefined;
   let heartbeatTimer: ReturnType<typeof setInterval> | undefined;
   let retryAttempt = 0;
+  // Keep the last successful show identity so a visibility transition can
+  // still issue its clear when the sidebar state has already gone inactive.
+  let previewTarget: { tabId: number; documentId: string; selectionId: string } | undefined;
+  let nextEditId = 0;
 
   const clearHeartbeat = () => {
     if (heartbeatTimer !== undefined) {
@@ -148,7 +159,19 @@ export function useSidebarConnection(): SidebarConnection {
 
     currentPort = port;
     const onMessage = (message: unknown) => {
-      if (disposed || currentPort !== port || !isStateMessage(message)) return;
+      if (disposed || currentPort !== port) return;
+      if (typeof message === 'object' && message !== null && 'kind' in message && message.kind === 'edit-ack') {
+        const ack = validateStyleEditResponse((message as { response?: unknown }).response);
+        if (ack) {
+          // The ack can beat the unsolicited state event. Reconcile its
+          // validated snapshot now, but only if it still belongs to the
+          // currently selected tab/document/element.
+          setModel((state) => acceptSidebarEditAck(state, ack, guard));
+          setEditAck(ack);
+        }
+        return;
+      }
+      if (!isStateMessage(message)) return;
       const next = validateSidebarView(message.view);
       if (next === undefined || windowId === undefined || next.windowId !== windowId) return;
       retryAttempt = 0;
@@ -166,6 +189,48 @@ export function useSidebarConnection(): SidebarConnection {
     };
     if (windowId !== undefined) sendReadyAndQuery(port);
     else identifyWindow(port);
+  };
+
+  const preview = (visible: boolean) => {
+    const port = currentPort;
+    if (!port) return;
+
+    const view = getSidebarPresentation(model()).view;
+    const state = view?.state;
+    const selection = view?.selection;
+    const currentTarget = view?.status === 'active' && view.tabId !== undefined && state && selection ? {
+      tabId: view.tabId,
+      documentId: state.identity.documentId,
+      selectionId: selection.selectionId,
+    } : undefined;
+    // Hides must not depend on the current presentation: disabling/stopping
+    // inspection can remove the state before the section's focus/hover leave
+    // effect runs. Prefer the identity that was shown most recently.
+    const target = visible ? currentTarget : previewTarget ?? currentTarget;
+    if (!target) return;
+    const sent = post(port, {
+      kind: 'preview',
+      intent: {
+        ...target,
+        visible,
+      },
+    });
+    if (sent) previewTarget = visible ? target : undefined;
+  };
+
+  const edit = (sides: PaddingValues): string | undefined => {
+    const port = currentPort;
+    const view = getSidebarPresentation(model()).view;
+    const state = view?.state;
+    const selection = view?.selection;
+    if (!port || view?.status !== 'active' || view.tabId === undefined || !state || !selection ||
+      !validatePaddingValues(sides)) return undefined;
+    const editId = `${currentEpoch}-${++nextEditId}`;
+    const intent = {
+      editId, tabId: view.tabId, documentId: state.identity.documentId,
+      selectionId: selection.selectionId, property: 'padding' as const, sides,
+    };
+    return post(port, { kind: 'edit', intent }) ? editId : undefined;
   };
 
   const sendCommand = (operation: SidebarCommand) => {
@@ -223,5 +288,8 @@ export function useSidebarConnection(): SidebarConnection {
     start,
     stop,
     refresh,
+    preview,
+    edit,
+    editAck,
   };
 }

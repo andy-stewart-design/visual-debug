@@ -3,7 +3,7 @@ import { defineBackground } from 'wxt/utils/define-background';
 import { inspectionActivation, updateActionFeedback } from '../lib/activation';
 import { resolveActionApi } from '../lib/action-api';
 import { createSidebarBrowser, type SidebarBrowser } from '../lib/sidebar-browser';
-import { createSidebarController, SIDEBAR_PORT } from '../lib/sidebar-controller';
+import { createSidebarController, SIDEBAR_PORT, validateSidebarPreviewIntent, validateSidebarStyleEditIntent } from '../lib/sidebar-controller';
 import { isTabId, validateInspectionStateMessage } from '../lib/inspection-protocol';
 import { hasGrantedSiteAccess } from '../lib/site-access';
 import { errorMessage, isExpectedUnavailableError } from '../lib/inspection-feedback';
@@ -142,6 +142,15 @@ export default defineBackground(() => {
       } else if (message.kind === 'command' && binding && claimedWindow !== undefined &&
         (message.operation === 'start' || message.operation === 'stop' || message.operation === 'query')) {
         run(controller.command(claimedWindow, binding.id, message.operation));
+      } else if (message.kind === 'preview' && binding && claimedWindow !== undefined) {
+        const intent = validateSidebarPreviewIntent(message.intent);
+        if (intent) run(controller.preview(claimedWindow, binding.id, intent));
+      } else if (message.kind === 'edit' && binding && claimedWindow !== undefined) {
+        const intent = validateSidebarStyleEditIntent(message.intent);
+        const windowForEdit = claimedWindow;
+        if (intent && windowForEdit !== undefined) run(controller.edit(windowForEdit, binding.id, intent).then((response) => {
+          if (response && !gone && ports.get(windowForEdit)?.port === port) port.postMessage({ kind: 'edit-ack', response });
+        }));
       }
       // Heartbeats keep Chrome's service worker alive; they never start a page.
     });
