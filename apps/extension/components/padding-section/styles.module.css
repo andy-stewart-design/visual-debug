@@ -1,13 +1,38 @@
 .section {
     padding: 0.75rem;
-    border-block-end: 1px solid rgb(148 163 184 / 0.35);
+    border-block-end: 1px solid #303030;
+}
+
+.headingRow {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.5rem;
+    margin-block-end: 0.5rem;
 }
 
 .heading {
-    margin: 0 0 0.5rem;
+    margin: 0;
     font-size: 12px;
     font-weight: 400;
     opacity: 0.6;
+}
+
+.modeField {
+    display: flex;
+    align-items: center;
+    gap: 0.35rem;
+    font-size: 12px;
+}
+
+.modeField select {
+    min-height: 24px;
+    padding: 2px 4px;
+    border: 1px solid #cbd5e1;
+    border-radius: 3px;
+    background: white;
+    color: inherit;
+    font: inherit;
 }
 
 .grid {
@@ -21,7 +46,7 @@
     grid-template-columns: 3.25rem minmax(0, 1fr);
     align-items: center;
     gap: 0.35rem;
-    font-size: 12px;
+    font-size: 0.75rem;
     text-transform: capitalize;
 }
 
@@ -47,14 +72,16 @@
     -moz-appearance: textfield;
 }
 
+.modeField select:disabled,
 .field input:disabled {
     cursor: not-allowed;
     opacity: 0.55;
 }
 
 @media (prefers-color-scheme: dark) {
+    .modeField select,
     .field input {
-        border-color: #475569;
-        background: #0f172a;
+        border-color: #303030;
+        background: #1a1a1a;
     }
 }

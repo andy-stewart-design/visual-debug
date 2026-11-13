@@ -11,12 +11,12 @@ import {
   type StyleEditResponse,
 } from './inspection-protocol';
 import type { ElementSnapshot } from './element-snapshot';
-import type { PaddingSide, StyleEditRequest } from './style-edit';
+import type { PaddingValues, StyleEditRequest } from './style-edit';
 
 export interface ControllerSession {
   readonly isDisposed: boolean;
   setPaddingPreview?: (intent: { selectionId: string; visible: boolean }) => void;
-  editStyle?: (request: { selectionId: string; side: PaddingSide; value: number }) => { ok: boolean; selection?: ElementSnapshot; error?: string };
+  editStyle?: (request: { selectionId: string; sides: PaddingValues }) => { ok: boolean; selection?: ElementSnapshot; error?: string };
   dispose(): void;
 }
 
@@ -190,7 +190,7 @@ export function createInspectionController(options: InspectionControllerOptions)
       if (state.selection?.selectionId !== request.selectionId) {
         return makeStyleEditResponse(request, false, 'The selected element is no longer current.');
       }
-      const result = session.editStyle?.({ selectionId: request.selectionId, side: request.side, value: request.value });
+      const result = session.editStyle?.({ selectionId: request.selectionId, sides: request.sides });
       if (!result?.ok) return makeStyleEditResponse(request, false, result?.error ?? 'The selected element could not be edited.', copy());
       // The real session's selection refresh invokes the controller callback
       // synchronously. Keep a fallback for small/future session adapters without

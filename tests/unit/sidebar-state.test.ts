@@ -129,7 +129,7 @@ describe('sidebar state presentation', () => {
     acknowledged.computedStyle.padding.top = '8px';
     const next = acceptSidebarEditAck(current, {
       kind: 'visual-debug:style-edit', ok: true, tabId: 3, documentId: 'doc-a', selectionId: 'selected',
-      editId: 'edit-top', property: 'padding', side: 'top',
+      editId: 'edit-top', property: 'padding', sides: { top: 8 },
       state: { ...current.view!.state!, revision: 3, selection: acknowledged },
     }, guard);
     expect(next.view?.state?.revision).toBe(3);
@@ -143,7 +143,7 @@ describe('sidebar state presentation', () => {
     const current = withView({ ...currentView, selection: currentSelection, state: { ...currentView.state!, selection: currentSelection } });
     const next = acceptSidebarEditAck(current, {
       kind: 'visual-debug:style-edit', ok: false, tabId: 3, documentId: 'doc-a', selectionId: 'old',
-      editId: 'edit-old', property: 'padding', side: 'top', error: 'The selected element is no longer current.',
+      editId: 'edit-old', property: 'padding', sides: { top: 4 }, error: 'The selected element is no longer current.',
       state: { ...current.view!.state!, revision: 6, selection: old },
     }, guard);
     expect(next).toBe(current);

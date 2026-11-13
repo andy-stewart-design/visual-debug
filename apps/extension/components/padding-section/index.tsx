@@ -1,142 +1,156 @@
-import { createEffect, createSignal, type Accessor } from "solid-js";
-import type { StyleEditResponse } from "../../lib/inspection-protocol";
-import type { PaddingSide } from "../../lib/style-edit";
-import { parsePaddingInput, adjustPaddingValue } from "../../lib/style-edit";
-import type { SidebarPresentation } from "../../lib/sidebar-state";
+import { createEffect, createSignal, type Accessor } from 'solid-js';
+import type { StyleEditResponse } from '../../lib/inspection-protocol';
+import type { PaddingValues } from '../../lib/style-edit';
+import { parsePaddingInput, adjustPaddingValue } from '../../lib/style-edit';
+import { paddingTargetKey, type PaddingTarget } from '../../lib/padding-target';
+import type { SidebarPresentation } from '../../lib/sidebar-state';
+import {
+  choosePaddingMode,
+  paddingFields,
+  paddingGroupText,
+  PADDING_MODE_LABELS,
+  type PaddingField,
+  type PaddingMode,
+} from '../../lib/padding-group';
 import {
   isPaddingPreviewActive,
   updatePaddingPreviewInteraction,
   type PaddingPreviewInteraction,
-} from "../../lib/padding-preview-interaction";
-import s from "./styles.module.css";
+} from '../../lib/padding-preview-interaction';
+import s from './styles.module.css';
 
 type PaddingSectionProps = {
   presentation: Accessor<SidebarPresentation>;
   onPreview: (visible: boolean) => void;
-  onEdit: (side: PaddingSide, value: number) => string | undefined;
+  onEdit: (sides: PaddingValues) => string | undefined;
   editAck: Accessor<StyleEditResponse | undefined>;
 };
 
-const sides = ["top", "right", "bottom", "left"] as const;
-type Drafts = Partial<Record<PaddingSide, string>>;
+type Drafts = Partial<Record<PaddingField, string>>;
 type PendingEdit = {
   editId: string;
-  tabId: number;
-  documentId: string;
-  selectionId: string;
+  targetKey: string;
   text: string;
 };
 
+type PendingEdits = Partial<Record<PaddingField, PendingEdit>>;
+
 export default function PaddingSection(props: PaddingSectionProps) {
   const presentation = () => props.presentation();
-  const selection = () => presentation().view?.selection;
+  const selection = () => {
+    const view = presentation().view;
+    return view?.selection ?? view?.state?.selection;
+  };
   const enabled = () =>
-    presentation().status === "active" && selection() !== undefined;
+    presentation().status === 'active' && selection() !== undefined;
   const [interaction, setInteraction] = createSignal<PaddingPreviewInteraction>(
     { hovered: false, focused: false },
   );
+  const [mode, setMode] = createSignal<PaddingMode>('independent');
   const [drafts, setDrafts] = createSignal<Drafts>({});
-  const [pending, setPending] = createSignal<
-    Partial<Record<PaddingSide, PendingEdit>>
-  >({});
-  let lastSelectionId: string | undefined;
+  const [pending, setPending] = createSignal<PendingEdits>({});
   const active = () => isPaddingPreviewActive(interaction());
+  const target = (): PaddingTarget | undefined => {
+    const view = presentation().view;
+    const current = view?.selection ?? view?.state?.selection;
+    if (view?.tabId === undefined || view.state === undefined || current === undefined) return undefined;
+    return {
+      tabId: view.tabId,
+      documentId: view.state.identity.documentId,
+      selectionId: current.selectionId,
+    };
+  };
+  const currentTargetKey = () => paddingTargetKey(target());
+  let lastTargetKey: string | undefined;
 
   createEffect(() => {
-    const id = selection()?.selectionId;
-    if (id !== lastSelectionId) {
-      lastSelectionId = id;
+    const current = selection();
+    const key = currentTargetKey();
+    if (key !== lastTargetKey) {
+      lastTargetKey = key;
       setDrafts({});
       setPending({});
+      if (current) setMode(choosePaddingMode(current.computedStyle.padding));
     }
   });
 
   createEffect(() => {
     const ack = props.editAck();
-    const currentPending = ack ? pending()[ack.side] : undefined;
-    const currentView = presentation().view;
-    const currentState = currentView?.state;
-    const currentSelection = currentView?.selection ?? currentState?.selection;
-    if (
-      !ack ||
-      !currentPending ||
-      currentPending.editId !== ack.editId ||
-      currentPending.tabId !== ack.tabId ||
-      currentPending.documentId !== ack.documentId ||
-      currentPending.selectionId !== ack.selectionId ||
-      !currentView ||
-      currentView.tabId !== ack.tabId ||
-      currentState?.identity.documentId !== ack.documentId ||
-      (currentView.status === "active" &&
-        currentSelection?.selectionId !== ack.selectionId)
-    )
-      return;
-    // A late acknowledgement cannot clear a newer edit for the same side.
-    const sentText = currentPending.text;
+    if (!ack) return;
+    const ackKey = paddingTargetKey({
+      tabId: ack.tabId,
+      documentId: ack.documentId,
+      selectionId: ack.selectionId,
+    });
+    const entries = Object.entries(pending());
+    const match = entries.find(([, value]) => value?.editId === ack.editId && value.targetKey === ackKey);
+    if (!match || currentTargetKey() !== ackKey) return;
+    const [fieldKey, currentPending] = match as [PaddingField, PendingEdit];
+
+    // A late acknowledgement cannot clear a newer edit for this field. A
+    // response from a mode that is no longer selected is ignored because mode
+    // changes retire the pending entry above.
     setPending((current) => {
       const next = { ...current };
-      delete next[ack.side];
+      if (next[fieldKey]?.editId === ack.editId) delete next[fieldKey];
       return next;
     });
-    if (sentText !== undefined) {
-      // Normalize to the authoritative computed snapshot after either a
-      // successful edit or rejection, unless the user has already typed a
-      // newer value (including unfinished input).
-      setDrafts((current) => {
-        if (current[ack.side] !== sentText) return current;
-        const next = { ...current };
-        delete next[ack.side];
-        return next;
-      });
-    }
+    setDrafts((current) => {
+      if (current[fieldKey] !== currentPending.text) return current;
+      const next = { ...current };
+      delete next[fieldKey];
+      return next;
+    });
   });
 
   createEffect(() => {
-    // Re-issue while active so a selection/document change follows the
-    // current sidebar view without putting the transient intent in state.
     props.onPreview(active() && enabled());
   });
 
-  const confirmed = (side: PaddingSide) => {
-    if (!enabled()) return "";
-    const value = selection()?.computedStyle.padding[side] ?? "";
-    return value.trim().replace(/px$/i, "");
+  const field = (key: PaddingField) => paddingFields(mode()).find((item) => item.key === key);
+  const confirmed = (key: PaddingField) => {
+    if (!enabled()) return '';
+    const current = selection();
+    const item = field(key);
+    return current && item ? paddingGroupText(current.computedStyle.padding, item.sides) : '';
   };
-  const shown = (side: PaddingSide) => drafts()[side] ?? confirmed(side);
-  const send = (side: PaddingSide, text: string) => {
-    setDrafts((current) => ({ ...current, [side]: text }));
+  const shown = (key: PaddingField) => drafts()[key] ?? confirmed(key);
+  const sidesFor = (key: PaddingField, value: number): PaddingValues => {
+    const item = field(key);
+    if (!item) return {};
+    return Object.fromEntries(item.sides.map((side) => [side, value])) as PaddingValues;
+  };
+  const send = (key: PaddingField, text: string) => {
+    setDrafts((current) => ({ ...current, [key]: text }));
     const value = parsePaddingInput(text);
-    if (value !== undefined && enabled()) {
-      const editId = props.onEdit(side, value);
-      const target = presentation().view;
-      const targetState = target?.state;
-      const targetSelection = target?.selection ?? targetState?.selection;
-      if (
-        editId &&
-        target?.tabId !== undefined &&
-        targetState &&
-        targetSelection
-      ) {
-        setPending((current) => ({
-          ...current,
-          [side]: {
-            editId,
-            tabId: target.tabId,
-            documentId: targetState.identity.documentId,
-            selectionId: targetSelection.selectionId,
-            text,
-          },
-        }));
-      }
+    if (value === undefined || !enabled()) return;
+    const sides = sidesFor(key, value);
+    if (Object.keys(sides).length === 0) return;
+    const editId = props.onEdit(sides);
+    const editTarget = target();
+    const editTargetKey = paddingTargetKey(editTarget);
+    if (editId && editTargetKey !== undefined) {
+      setPending((current) => ({
+        ...current,
+        [key]: { editId, targetKey: editTargetKey, text },
+      }));
     }
   };
-  const normalize = (side: PaddingSide, input: HTMLInputElement) => {
-    input.value = confirmed(side);
+  const normalize = (key: PaddingField, input: HTMLInputElement) => {
+    input.value = confirmed(key);
     setDrafts((current) => {
       const next = { ...current };
-      delete next[side];
+      delete next[key];
       return next;
     });
+  };
+  const changeMode = (next: PaddingMode) => {
+    setMode(next);
+    // Drafts from a previous grouping no longer describe the visible fields.
+    // Retiring their acknowledgements prevents a late response from restoring
+    // an obsolete draft or changing the selected mode.
+    setDrafts({});
+    setPending({});
   };
 
   return (
@@ -145,69 +159,73 @@ export default function PaddingSection(props: PaddingSectionProps) {
       aria-labelledby="padding-heading"
       onPointerEnter={() =>
         setInteraction((state) =>
-          updatePaddingPreviewInteraction(state, { type: "pointer-enter" }),
+          updatePaddingPreviewInteraction(state, { type: 'pointer-enter' }),
         )
       }
       onPointerLeave={() =>
         setInteraction((state) =>
-          updatePaddingPreviewInteraction(state, { type: "pointer-leave" }),
+          updatePaddingPreviewInteraction(state, { type: 'pointer-leave' }),
         )
       }
       onFocusIn={() =>
         setInteraction((state) =>
-          updatePaddingPreviewInteraction(state, { type: "focus-enter" }),
+          updatePaddingPreviewInteraction(state, { type: 'focus-enter' }),
         )
       }
       onFocusOut={(event) => {
         const current = event.currentTarget;
         const next = event.relatedTarget;
         const stillWithin =
-          current instanceof Element &&
-          next instanceof Node &&
-          current.contains(next);
+          current instanceof Element && next instanceof Node && current.contains(next);
         setInteraction((state) =>
-          updatePaddingPreviewInteraction(state, {
-            type: "focus-leave",
-            stillWithin,
-          }),
+          updatePaddingPreviewInteraction(state, { type: 'focus-leave', stillWithin }),
         );
-        if (event.target instanceof HTMLInputElement)
-          normalize(
-            event.target.getAttribute("data-side") as PaddingSide,
-            event.target,
-          );
+        if (event.target instanceof HTMLInputElement) {
+          normalize(event.target.getAttribute('data-field') as PaddingField, event.target);
+        }
       }}
     >
-      <h2 id="padding-heading" class={s.heading}>
-        Padding
-      </h2>
+      <div class={s.headingRow}>
+        <h2 id="padding-heading" class={s.heading}>Padding</h2>
+        <label class={s.modeField}>
+          <span>Mode</span>
+          <select
+            aria-label="Padding editing mode"
+            disabled={!enabled()}
+            value={mode()}
+            onChange={(event) => changeMode(event.currentTarget.value as PaddingMode)}
+          >
+            {(Object.keys(PADDING_MODE_LABELS) as PaddingMode[]).map((value) => (
+              <option value={value}>{PADDING_MODE_LABELS[value]}</option>
+            ))}
+          </select>
+        </label>
+      </div>
       <div class={s.grid}>
-        {sides.map((side) => (
+        {paddingFields(mode()).map((item) => (
           <label class={s.field}>
-            <span>{side}</span>
+            <span>{item.label}</span>
             <input
               type="number"
               min="0"
               step="any"
-              data-side={side}
-              aria-label={`Padding ${side}`}
+              data-field={item.key}
+              aria-label={`Padding ${item.label}`}
               disabled={!enabled()}
-              value={shown(side)}
-              onInput={(event) => send(side, event.currentTarget.value)}
+              value={shown(item.key)}
+              placeholder="Mixed"
+              onInput={(event) => send(item.key, event.currentTarget.value)}
               onKeyDown={(event) => {
-                if (event.key === "ArrowUp" || event.key === "ArrowDown") {
-                  // The number input's native step must not run for an
-                  // unfinished/invalid draft. The pure helper below decides
-                  // whether there is a value we can send.
+                if (event.key === 'ArrowUp' || event.key === 'ArrowDown') {
                   event.preventDefault();
                   const next = adjustPaddingValue(
                     event.currentTarget.value,
-                    event.key === "ArrowUp" ? 1 : -1,
+                    event.key === 'ArrowUp' ? 1 : -1,
                   );
-                  if (next !== undefined) send(side, String(next));
-                } else if (event.key === "Enter") {
+                  if (next !== undefined) send(item.key, String(next));
+                } else if (event.key === 'Enter') {
                   event.preventDefault();
-                  normalize(side, event.currentTarget);
+                  normalize(item.key, event.currentTarget);
                   event.currentTarget.blur();
                 }
               }}

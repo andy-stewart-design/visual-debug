@@ -5,7 +5,7 @@ import {
   type InspectionState, type InspectionStatus,
 } from './inspection-protocol';
 import { isElementSnapshot, type ElementSnapshot } from './element-snapshot';
-import { PADDING_SIDES, type PaddingSide, type StyleEditRequest } from './style-edit';
+import { validatePaddingValues, type PaddingValues, type StyleEditRequest } from './style-edit';
 import { makeStyleEditResponse, type StyleEditResponse } from './inspection-protocol';
 
 export const SIDEBAR_PORT = 'visual-debug:sidebar';
@@ -16,8 +16,7 @@ export interface SidebarStyleEditIntent {
   documentId: string;
   selectionId: string;
   property: 'padding';
-  side: PaddingSide;
-  value: number;
+  sides: PaddingValues;
 }
 export interface SidebarPreviewIntent {
   tabId: number;
@@ -63,8 +62,7 @@ function isSidebarStyleEditIntent(value: unknown): value is SidebarStyleEditInte
   return record(value) && typeof value.editId === 'string' && value.editId.length > 0 &&
     isTabId(value.tabId) &&
     typeof value.documentId === 'string' && value.documentId.length > 0 && typeof value.selectionId === 'string' && value.selectionId.length > 0 &&
-    value.property === 'padding' && typeof value.side === 'string' && PADDING_SIDES.includes(value.side as PaddingSide) &&
-    typeof value.value === 'number' && Number.isFinite(value.value) && value.value >= 0;
+    value.property === 'padding' && validatePaddingValues(value.sides);
 }
 export function validateSidebarStyleEditIntent(value: unknown): SidebarStyleEditIntent | undefined {
   return isSidebarStyleEditIntent(value) ? value : undefined;
@@ -616,7 +614,7 @@ export function createSidebarController(options: {
     const request: StyleEditRequest = {
       kind: 'visual-debug:style-edit', tabId: intent.tabId, documentId: intent.documentId,
       selectionId: intent.selectionId, editId: intent.editId,
-      property: intent.property, side: intent.side, value: intent.value,
+      property: intent.property, sides: intent.sides,
     };
     if (!known || known.identity.documentId !== intent.documentId || known.status !== 'active' ||
       known.selection?.selectionId !== intent.selectionId) {

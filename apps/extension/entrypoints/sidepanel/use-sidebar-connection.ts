@@ -6,7 +6,7 @@ import {
   type SidebarView,
 } from '../../lib/sidebar-controller';
 import { validateStyleEditResponse, type StyleEditResponse } from '../../lib/inspection-protocol';
-import type { PaddingSide } from '../../lib/style-edit';
+import { validatePaddingValues, type PaddingValues } from '../../lib/style-edit';
 import {
   acceptSidebarEditAck,
   acceptSidebarView,
@@ -32,7 +32,7 @@ export type SidebarConnection = {
   stop: () => void;
   refresh: () => void;
   preview: (visible: boolean) => void;
-  edit: (side: PaddingSide, value: number) => string | undefined;
+  edit: (sides: PaddingValues) => string | undefined;
   editAck: Accessor<StyleEditResponse | undefined>;
 };
 
@@ -218,17 +218,17 @@ export function useSidebarConnection(): SidebarConnection {
     if (sent) previewTarget = visible ? target : undefined;
   };
 
-  const edit = (side: PaddingSide, value: number): string | undefined => {
+  const edit = (sides: PaddingValues): string | undefined => {
     const port = currentPort;
     const view = getSidebarPresentation(model()).view;
     const state = view?.state;
     const selection = view?.selection;
     if (!port || view?.status !== 'active' || view.tabId === undefined || !state || !selection ||
-      !Number.isFinite(value) || value < 0) return undefined;
+      !validatePaddingValues(sides)) return undefined;
     const editId = `${currentEpoch}-${++nextEditId}`;
     const intent = {
       editId, tabId: view.tabId, documentId: state.identity.documentId,
-      selectionId: selection.selectionId, property: 'padding' as const, side, value,
+      selectionId: selection.selectionId, property: 'padding' as const, sides,
     };
     return post(port, { kind: 'edit', intent }) ? editId : undefined;
   };

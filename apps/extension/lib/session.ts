@@ -4,7 +4,7 @@ import { createPicker, type Picker } from './picking';
 import { createModifierController } from './modifiers';
 import { createSelectionController } from './selection';
 import type { ElementSnapshot } from './element-snapshot';
-import { applyPaddingStyleEdit, type PaddingSide } from './style-edit';
+import { applyPaddingStyleEdit, type PaddingValues } from './style-edit';
 import { createTrackingController, type TrackingController } from './tracking';
 import { mountSessionUi } from './ui';
 
@@ -20,7 +20,7 @@ export type PaddingPreviewIntent = Readonly<{
 export type InspectionSession = {
   readonly isDisposed: boolean;
   setPaddingPreview?: (intent: PaddingPreviewIntent) => void;
-  editStyle?: (request: { selectionId: string; side: PaddingSide; value: number }) => { ok: boolean; selection?: ElementSnapshot; error?: string };
+  editStyle?: (request: { selectionId: string; sides: PaddingValues }) => { ok: boolean; selection?: ElementSnapshot; error?: string };
   dispose: () => void;
 };
 
@@ -136,7 +136,7 @@ export async function createInspectionSession(
         if (!target || !target.isConnected || selection.state().anchor?.selectionId !== request.selectionId) {
           return { ok: false, error: 'The selected element is no longer current.' };
         }
-        if (!applyPaddingStyleEdit(target, request.side, request.value)) {
+        if (!applyPaddingStyleEdit(target, request.sides)) {
           return { ok: false, error: 'The selected element is no longer editable.' };
         }
         // Refresh synchronously so the page-computed value, dimensions, outlines,

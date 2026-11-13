@@ -14,7 +14,7 @@ import {
   validateInspectionPreviewResponse,
   validateStyleEditResponse,
 } from './inspection-protocol';
-import type { StyleEditRequest } from './style-edit';
+import { samePaddingValues, type StyleEditRequest } from './style-edit';
 
 const NEUTRAL_TITLE = 'Open sidebar and start inspection';
 
@@ -154,7 +154,7 @@ export function createActivationController(options: ActivationControllerOptions)
       guard();
       const response = validateStyleEditResponse(raw);
       if (!response || response.tabId !== tabId || response.documentId !== request.documentId || response.selectionId !== request.selectionId ||
-        response.editId !== request.editId || response.side !== request.side) throw new Error('Style edit returned an invalid or stale response.');
+        response.editId !== request.editId || !samePaddingValues(response.sides, request.sides)) throw new Error('Style edit returned an invalid or stale response.');
       return response;
     });
   };

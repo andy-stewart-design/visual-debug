@@ -1,5 +1,5 @@
 import { isElementSnapshot, type ElementSnapshot } from './element-snapshot';
-import { PADDING_SIDES, type PaddingSide, type StyleEditRequest } from './style-edit';
+import { validatePaddingValues, type PaddingSide, type StyleEditRequest } from './style-edit';
 
 export const STYLE_EDIT_MESSAGE = 'visual-debug:style-edit';
 
@@ -76,7 +76,7 @@ export interface StyleEditResponse {
   selectionId: string;
   editId: string;
   property: 'padding';
-  side: PaddingSide;
+  sides: Readonly<Partial<Record<PaddingSide, number>>>;
   state?: InspectionState;
   error?: string;
 }
@@ -113,8 +113,7 @@ export function isInspectionOperation(value: unknown): value is InspectionOperat
 function isStyleEditRequest(value: unknown): value is StyleEditRequest {
   return isRecord(value) && value.kind === STYLE_EDIT_MESSAGE && isTabId(value.tabId) &&
     isNonEmptyString(value.documentId) && isNonEmptyString(value.selectionId) && isNonEmptyString(value.editId) &&
-    value.property === 'padding' && typeof value.side === 'string' && PADDING_SIDES.includes(value.side as PaddingSide) &&
-    typeof value.value === 'number' && Number.isFinite(value.value) && value.value >= 0;
+    value.property === 'padding' && validatePaddingValues(value.sides);
 }
 
 export function validateStyleEditRequest(
@@ -132,7 +131,7 @@ export function makeStyleEditResponse(request: StyleEditRequest, ok: boolean, er
   return {
     kind: STYLE_EDIT_MESSAGE, ok, tabId: request.tabId, documentId: request.documentId,
     selectionId: request.selectionId, editId: request.editId,
-    property: request.property, side: request.side,
+    property: request.property, sides: request.sides,
     ...(state === undefined ? {} : { state }), ...(error === undefined ? {} : { error }),
   };
 }
@@ -140,7 +139,7 @@ export function makeStyleEditResponse(request: StyleEditRequest, ok: boolean, er
 export function validateStyleEditResponse(value: unknown): StyleEditResponse | undefined {
   if (!isRecord(value) || value.kind !== STYLE_EDIT_MESSAGE || typeof value.ok !== 'boolean' ||
     !isTabId(value.tabId) || !isNonEmptyString(value.documentId) || !isNonEmptyString(value.selectionId) ||
-    !isNonEmptyString(value.editId) || value.property !== 'padding' || typeof value.side !== 'string' || !PADDING_SIDES.includes(value.side as PaddingSide) ||
+    !isNonEmptyString(value.editId) || value.property !== 'padding' || !validatePaddingValues(value.sides) ||
     (value.state !== undefined && !isInspectionState(value.state)) || (value.error !== undefined && typeof value.error !== 'string')) return undefined;
   if (!value.ok && value.error === undefined) return undefined;
   if (value.ok && value.state === undefined) return undefined;
