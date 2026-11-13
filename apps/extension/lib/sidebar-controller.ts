@@ -12,7 +12,6 @@ export const SIDEBAR_PORT = 'visual-debug:sidebar';
 export type SidebarOperation = 'start' | 'stop' | 'query';
 export interface SidebarStyleEditIntent {
   editId: string;
-  order: number;
   tabId: number;
   documentId: string;
   selectionId: string;
@@ -25,7 +24,6 @@ export interface SidebarPreviewIntent {
   documentId: string;
   selectionId: string;
   visible: boolean;
-  sequence: number;
 }
 export interface SidebarView {
   windowId: number;
@@ -40,7 +38,7 @@ export interface SidebarView {
 type Tab = { id: number; windowId: number };
 type Connection = { id: number; publish(view: SidebarView): void };
 type Pending = { tabId: number; cancelled?: boolean };
-type PreviewTarget = { tabId: number; documentId: string; selectionId: string; sequence?: number };
+type PreviewTarget = { tabId: number; documentId: string; selectionId: string };
 type WindowRecord = {
   epoch: number;
   viewVersion: number;
@@ -55,7 +53,6 @@ type WindowRecord = {
   tabEpochs: Map<number, number>;
   cleanup: Promise<void>;
   tabCleanup: Map<number, Promise<void>>;
-  previewReconciled: boolean;
   previewTarget?: PreviewTarget & { sequence: number };
 };
 
@@ -64,7 +61,7 @@ function record(value: unknown): value is Record<string, unknown> {
 }
 function isSidebarStyleEditIntent(value: unknown): value is SidebarStyleEditIntent {
   return record(value) && typeof value.editId === 'string' && value.editId.length > 0 &&
-    typeof value.order === 'number' && Number.isSafeInteger(value.order) && value.order >= 0 && isTabId(value.tabId) &&
+    isTabId(value.tabId) &&
     typeof value.documentId === 'string' && value.documentId.length > 0 && typeof value.selectionId === 'string' && value.selectionId.length > 0 &&
     value.property === 'padding' && typeof value.side === 'string' && PADDING_SIDES.includes(value.side as PaddingSide) &&
     typeof value.value === 'number' && Number.isFinite(value.value) && value.value >= 0;
@@ -75,8 +72,7 @@ export function validateSidebarStyleEditIntent(value: unknown): SidebarStyleEdit
 
 function isSidebarPreviewIntent(value: unknown): value is SidebarPreviewIntent {
   return record(value) && isTabId(value.tabId) && typeof value.documentId === 'string' && value.documentId.length > 0 &&
-    typeof value.selectionId === 'string' && value.selectionId.length > 0 && typeof value.visible === 'boolean' &&
-    typeof value.sequence === 'number' && Number.isSafeInteger(value.sequence) && value.sequence >= 0;
+    typeof value.selectionId === 'string' && value.selectionId.length > 0 && typeof value.visible === 'boolean';
 }
 export function validateSidebarPreviewIntent(value: unknown): SidebarPreviewIntent | undefined {
   return isSidebarPreviewIntent(value) ? value : undefined;
@@ -109,11 +105,8 @@ export function createSidebarController(options: {
   getTab(tabId: number): Promise<Tab | undefined>;
   /** Confirm an existing browser-managed HTTP(S) host grant. Never requests it. */
   canInject?: (tabId: number) => Promise<boolean>;
-  /** Persisted across MV3 worker restarts; defaults to the legacy epoch for tests/callers. */
-  previewStreamEpoch?: number | Promise<number>;
   readyTimeoutMs?: number;
 }) {
-  const previewStreamEpoch = Promise.resolve(options.previewStreamEpoch ?? 0);
   const windows = new Map<number, WindowRecord>();
   let connectionId = 0;
   // One counter per background stream, not per sidebar window: a tab can move
@@ -122,7 +115,7 @@ export function createSidebarController(options: {
   const get = (id: number): WindowRecord => {
     let value = windows.get(id);
     if (!value) {
-      value = { epoch: 0, viewVersion: 0, closed: false, waiters: new Set(), owned: new Set(), pending: new Set(), known: new Map(), reconciling: new Set(), deferredStates: new Map(), tabEpochs: new Map(), cleanup: Promise.resolve(), tabCleanup: new Map(), previewReconciled: false, previewTarget: undefined };
+      value = { epoch: 0, viewVersion: 0, closed: false, waiters: new Set(), owned: new Set(), pending: new Set(), known: new Map(), reconciling: new Set(), deferredStates: new Map(), tabEpochs: new Map(), cleanup: Promise.resolve(), tabCleanup: new Map(), previewTarget: undefined };
       windows.set(id, value);
     }
     return value;
@@ -168,14 +161,10 @@ export function createSidebarController(options: {
       publish(value, fromState(id, known));
     } else publish(value, view);
   };
-  const clearPreview = async (value: WindowRecord, fallback?: PreviewTarget): Promise<void> => {
-    const target = value.previewTarget ?? fallback;
+  const clearPreview = async (value: WindowRecord): Promise<void> => {
+    const target = value.previewTarget;
     value.previewTarget = undefined;
     if (!target || !options.activation.preview) return;
-    const streamEpoch = await previewStreamEpoch;
-    // The controller owns this stream. It survives sidebar ports, whose local
-    // counters are intentionally disposable, and keeps a clear ordered after
-    // any already-started show in the activation queue.
     const sequence = ++previewSequence;
     try {
       await options.activation.preview(target.tabId, {
@@ -186,7 +175,6 @@ export function createSidebarController(options: {
         preview: 'padding',
         visible: false,
         sequence,
-        streamEpoch,
       });
     } catch { /* navigation and stopped sessions already clear their UI */ }
   };
@@ -214,8 +202,7 @@ export function createSidebarController(options: {
       if (target && (target.tabId !== intent.tabId || target.documentId !== intent.documentId ||
         target.selectionId !== intent.selectionId)) return;
       // A clear is deliberately idempotent. The target can be absent when a
-      // show was rejected, a worker restarted, or a lifecycle cleanup already
-      // consumed it, but the page may still have the transient overlay.
+      // show was rejected or lifecycle cleanup already consumed it.
       if (!target) {
         if (known.selection?.selectionId !== intent.selectionId) return;
         target = { tabId: intent.tabId, documentId: intent.documentId, selectionId: intent.selectionId, sequence: ++previewSequence };
@@ -226,7 +213,6 @@ export function createSidebarController(options: {
     }
 
     if (!target) return;
-    const streamEpoch = await previewStreamEpoch;
     const active = await options.getActiveTab(id);
     if (!current(value, value.epoch, token) || value.viewVersion !== version ||
       active?.id !== intent.tabId || active.windowId !== id ||
@@ -240,7 +226,6 @@ export function createSidebarController(options: {
         preview: 'padding',
         visible: intent.visible,
         sequence: target.sequence,
-        streamEpoch,
       });
     } catch (error) {
       // A rejected show acknowledgement never becomes the recorded active
@@ -352,17 +337,6 @@ export function createSidebarController(options: {
       acknowledged = value.known.get(tab.id);
       const state = await query(id, tab.id, epoch);
       if (state) {
-        // A fresh MV3 worker has no previewTarget, but the surviving page can
-        // still be displaying the previous worker's overlay. Reconcile that
-        // transient UI from the authoritative page state before rendering the
-        // idle sidebar. The persisted stream epoch fences late old packets.
-        const target = state.status === 'active' && state.selection ? {
-          tabId: tab.id,
-          documentId: state.identity.documentId,
-          selectionId: state.selection.selectionId,
-        } : undefined;
-        await clearPreview(value, value.previewReconciled ? undefined : target);
-        value.previewReconciled = true;
         await render(id, tab.id, epoch, version, fromState(id, state));
       }
     } catch (error) {
@@ -641,7 +615,7 @@ export function createSidebarController(options: {
     const known = value.known.get(intent.tabId);
     const request: StyleEditRequest = {
       kind: 'visual-debug:style-edit', tabId: intent.tabId, documentId: intent.documentId,
-      selectionId: intent.selectionId, editId: intent.editId, order: intent.order,
+      selectionId: intent.selectionId, editId: intent.editId,
       property: intent.property, side: intent.side, value: intent.value,
     };
     if (!known || known.identity.documentId !== intent.documentId || known.status !== 'active' ||

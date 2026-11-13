@@ -5,7 +5,7 @@ import { applyPaddingStyleEdit, adjustPaddingValue, parsePaddingInput, readCompu
 
 const request = (side: 'top' | 'right' | 'bottom' | 'left', value: number): StyleEditRequest => ({
   kind: 'visual-debug:style-edit', tabId: 3, documentId: 'doc-a', selectionId: 'selection-1',
-  editId: `edit-${side}`, order: 1, property: 'padding', side, value,
+  editId: `edit-${side}`, property: 'padding', side, value,
 });
 
 describe('style editing primitives', () => {
@@ -48,9 +48,8 @@ describe('style editing primitives', () => {
       }),
       inject: vi.fn(async () => undefined),
     } });
-    const second = { ...request('right', 2), editId: 'edit-right', order: 2 };
+    const second = { ...request('right', 2), editId: 'edit-right' };
     await Promise.all([activation.edit(3, request('top', 1)), activation.edit(3, second)]);
-    expect(sent.map((edit) => edit.order)).toEqual([1, 2]);
     expect(sent.every((edit) => edit.documentId === 'doc-a' && edit.selectionId === 'selection-1')).toBe(true);
   });
 

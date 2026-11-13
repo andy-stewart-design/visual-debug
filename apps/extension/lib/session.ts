@@ -10,14 +10,11 @@ import { mountSessionUi } from './ui';
 
 export type PaddingPreview = Readonly<{
   selectionId: string;
-  sequence: number;
 }>;
 
 export type PaddingPreviewIntent = Readonly<{
   selectionId: string;
   visible: boolean;
-  sequence: number;
-  streamEpoch?: number;
 }>;
 
 export type InspectionSession = {
@@ -40,11 +37,6 @@ export async function createInspectionSession(
   let tracking: TrackingController | undefined;
   let removeSelectionListener: (() => void) | undefined;
   const [paddingPreview, setPaddingPreview] = createSignal<PaddingPreview | undefined>();
-  // Preview ordering is a pair: the persisted background stream epoch fences
-  // packets from a retired MV3 worker, while the sequence orders packets in
-  // one worker stream.
-  let lastPreviewEpoch = -1;
-  let lastPreviewSequence = -1;
   const selection = createSelectionController();
 
   const dispose = () => {
@@ -132,15 +124,10 @@ export async function createInspectionSession(
       },
       setPaddingPreview(intent) {
         if (disposed) return;
-        const streamEpoch = intent.streamEpoch ?? 0;
-        if (streamEpoch < lastPreviewEpoch ||
-          (streamEpoch === lastPreviewEpoch && intent.sequence <= lastPreviewSequence)) return;
-        lastPreviewEpoch = streamEpoch;
-        lastPreviewSequence = intent.sequence;
         if (!intent.visible) {
           setPaddingPreview(undefined);
         } else if (selection.state().anchor?.selectionId === intent.selectionId) {
-          setPaddingPreview({ selectionId: intent.selectionId, sequence: intent.sequence });
+          setPaddingPreview({ selectionId: intent.selectionId });
         }
       },
       editStyle(request) {

@@ -10,7 +10,6 @@ export type StyleEditRequest = Readonly<{
   documentId: string;
   selectionId: string;
   editId: string;
-  order: number;
   property: StyleEditProperty;
   side: PaddingSide;
   value: number;

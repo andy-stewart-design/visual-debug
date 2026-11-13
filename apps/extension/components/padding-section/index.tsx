@@ -58,9 +58,10 @@ export default function PaddingSection(props: PaddingSectionProps) {
       delete next[ack.side];
       return next;
     });
-    if (!ack.ok && sentText !== undefined) {
-      // Restore the acknowledged value after a rejection, unless the user has
-      // already typed a newer value (including an unfinished one).
+    if (sentText !== undefined) {
+      // Normalize to the authoritative computed snapshot after either a
+      // successful edit or rejection, unless the user has already typed a
+      // newer value (including unfinished input).
       setDrafts((current) => {
         if (current[ack.side] !== sentText) return current;
         const next = { ...current };

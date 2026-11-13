@@ -12,31 +12,7 @@ function tabReference(tab: Browser.tabs.Tab | undefined) {
   return tab && isTabId(tab.id) && isTabId(tab.windowId) ? { id: tab.id, windowId: tab.windowId } : undefined;
 }
 
-const PREVIEW_STREAM_EPOCH_KEY = 'visual-debug:preview-stream-epoch';
-
-async function allocatePreviewStreamEpoch(): Promise<number> {
-  // Some unit/browser harnesses provide only the APIs they exercise. The real
-  // MV3 manifest grants storage; the compatibility fallback is only for such
-  // harnesses and keeps their legacy preview requests at epoch zero.
-  const storage = (browser as unknown as {
-    storage?: { local?: {
-      get(key: string): Promise<Record<string, unknown>>;
-      set(value: Record<string, number>): Promise<void>;
-    } };
-  }).storage?.local;
-  if (!storage) return 0;
-  const stored = await storage.get(PREVIEW_STREAM_EPOCH_KEY);
-  const previous = stored[PREVIEW_STREAM_EPOCH_KEY];
-  const next = typeof previous === 'number' && Number.isSafeInteger(previous) && previous >= 0 ? previous + 1 : 1;
-  await storage.set({ [PREVIEW_STREAM_EPOCH_KEY]: next });
-  return next;
-}
-
 export default defineBackground(() => {
-  // The epoch is persisted, unlike the service worker's in-memory sequence.
-  // Every worker incarnation therefore creates a stream newer than packets
-  // which may still be in flight from the retired incarnation.
-  const previewStreamEpoch = allocatePreviewStreamEpoch();
   let sidebar: SidebarBrowser | undefined;
   let setupError: string | undefined;
   try { sidebar = createSidebarBrowser(browser); } catch (error) { setupError = errorMessage(error); }
@@ -56,7 +32,6 @@ export default defineBackground(() => {
       }
     },
     canInject: (tabId) => hasGrantedSiteAccess(browser, tabId),
-    previewStreamEpoch,
   });
   type Port = ReturnType<typeof browser.runtime.connect>;
   type Connection = ReturnType<typeof controller.connect>;

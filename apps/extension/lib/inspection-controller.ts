@@ -15,7 +15,7 @@ import type { PaddingSide, StyleEditRequest } from './style-edit';
 
 export interface ControllerSession {
   readonly isDisposed: boolean;
-  setPaddingPreview?: (intent: { selectionId: string; visible: boolean; sequence: number; streamEpoch?: number }) => void;
+  setPaddingPreview?: (intent: { selectionId: string; visible: boolean }) => void;
   editStyle?: (request: { selectionId: string; side: PaddingSide; value: number }) => { ok: boolean; selection?: ElementSnapshot; error?: string };
   dispose(): void;
 }
@@ -179,8 +179,7 @@ export function createInspectionController(options: InspectionControllerOptions)
       if (disposed || request.tabId !== options.tabId || request.documentId !== options.documentId ||
         !session || session.isDisposed || state.status !== 'active') return makePreviewResponse(request, false);
       if (request.visible && state.selection?.selectionId !== request.selectionId) return makePreviewResponse(request, false);
-      session.setPaddingPreview?.({ selectionId: request.selectionId, visible: request.visible,
-        sequence: request.sequence, streamEpoch: request.streamEpoch });
+      session.setPaddingPreview?.({ selectionId: request.selectionId, visible: request.visible });
       return makePreviewResponse(request, true);
     },
     handleStyleEdit: async (request) => {

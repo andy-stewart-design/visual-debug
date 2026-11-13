@@ -57,7 +57,7 @@ export function useSidebarConnection(): SidebarConnection {
   // Keep the last successful show identity so a visibility transition can
   // still issue its clear when the sidebar state has already gone inactive.
   let previewTarget: { tabId: number; documentId: string; selectionId: string } | undefined;
-  let nextEditOrder = 0;
+  let nextEditId = 0;
 
   const clearHeartbeat = () => {
     if (heartbeatTimer !== undefined) {
@@ -213,9 +213,6 @@ export function useSidebarConnection(): SidebarConnection {
       intent: {
         ...target,
         visible,
-        // The background controller owns the monotonic stream. This port is
-        // reconnectable, so a local counter must not define ordering.
-        sequence: 0,
       },
     });
     if (sent) previewTarget = visible ? target : undefined;
@@ -228,9 +225,9 @@ export function useSidebarConnection(): SidebarConnection {
     const selection = view?.selection;
     if (!port || view?.status !== 'active' || view.tabId === undefined || !state || !selection ||
       !Number.isFinite(value) || value < 0) return undefined;
-    const editId = `${currentEpoch}-${++nextEditOrder}`;
+    const editId = `${currentEpoch}-${++nextEditId}`;
     const intent = {
-      editId, order: nextEditOrder, tabId: view.tabId, documentId: state.identity.documentId,
+      editId, tabId: view.tabId, documentId: state.identity.documentId,
       selectionId: selection.selectionId, property: 'padding' as const, side, value,
     };
     return post(port, { kind: 'edit', intent }) ? editId : undefined;

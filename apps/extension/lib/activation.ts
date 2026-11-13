@@ -154,7 +154,7 @@ export function createActivationController(options: ActivationControllerOptions)
       guard();
       const response = validateStyleEditResponse(raw);
       if (!response || response.tabId !== tabId || response.documentId !== request.documentId || response.selectionId !== request.selectionId ||
-        response.editId !== request.editId || response.order !== request.order || response.side !== request.side) throw new Error('Style edit returned an invalid or stale response.');
+        response.editId !== request.editId || response.side !== request.side) throw new Error('Style edit returned an invalid or stale response.');
       return response;
     });
   };
@@ -179,7 +179,7 @@ export function createActivationController(options: ActivationControllerOptions)
       guard();
       const validated = validateInspectionPreviewResponse(response);
       if (!validated || validated.tabId !== tabId || validated.documentId !== request.documentId ||
-        validated.sequence !== request.sequence || validated.streamEpoch !== request.streamEpoch) {
+        validated.sequence !== request.sequence) {
         throw new Error('Inspection preview returned an invalid response.');
       }
       if (!validated.ok) throw new Error('Inspection preview was rejected by the content script.');

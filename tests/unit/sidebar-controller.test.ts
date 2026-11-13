@@ -41,8 +41,8 @@ function setup() {
   const getTabs = vi.fn(async (windowId: number) => [...tabs.values()].filter((tab) => tab.windowId === windowId));
   const getTab = vi.fn(async (id: number) => tabs.get(id));
   const canInject = vi.fn(async () => false);
-  const makeController = (previewStreamEpoch = 0) => createSidebarController({
-    activation, getActiveTab, getTabs, getTab, canInject, previewStreamEpoch, readyTimeoutMs: 20,
+  const makeController = () => createSidebarController({
+    activation, getActiveTab, getTabs, getTab, canInject, readyTimeoutMs: 20,
   });
   const controller = makeController();
   const connect = (windowId = 1) => {
@@ -386,14 +386,13 @@ describe('sidebar controller', () => {
     page.selectionChanged(selection('selection-1'));
     const { connection } = connect();
     await vi.waitFor(() => expect(activation.query).toHaveBeenCalled());
-    await vi.waitFor(() => expect(accepted).toContain(false));
     accepted.length = 0;
 
     await controller.preview(1, connection.id, {
-      tabId: 7, documentId: 'doc-7', selectionId: 'selection-1', visible: true, sequence: 0,
+      tabId: 7, documentId: 'doc-7', selectionId: 'selection-1', visible: true,
     });
     await controller.preview(1, connection.id, {
-      tabId: 7, documentId: 'doc-7', selectionId: 'selection-1', visible: false, sequence: 0,
+      tabId: 7, documentId: 'doc-7', selectionId: 'selection-1', visible: false,
     });
     expect(accepted).toEqual([true, false]);
   });
@@ -410,7 +409,7 @@ describe('sidebar controller', () => {
       if (request.visible) await held.promise;
     });
     const showing = controller.preview(1, connection.id, {
-      tabId: 7, documentId: 'doc-7', selectionId: 'selection-1', visible: true, sequence: 0,
+      tabId: 7, documentId: 'doc-7', selectionId: 'selection-1', visible: true,
     });
     await vi.waitFor(() => expect(requests).toHaveLength(1));
     connection.disconnect();
@@ -429,7 +428,7 @@ describe('sidebar controller', () => {
     getActiveTab.mockClear();
     getActiveTab.mockReturnValueOnce(lookup.promise);
     const showing = controller.preview(1, connection.id, {
-      tabId: 7, documentId: 'doc-7', selectionId: 'selection-1', visible: true, sequence: 0,
+      tabId: 7, documentId: 'doc-7', selectionId: 'selection-1', visible: true,
     });
     await vi.waitFor(() => expect(getActiveTab).toHaveBeenCalledOnce());
     active.set(1, 8);
@@ -447,68 +446,19 @@ describe('sidebar controller', () => {
     await controller.stateChanged(state(7, 'active', 2, 'doc-7', 'selection-1'), { tabId: 7, windowId: 1 });
     activation.preview.mockResolvedValue(undefined);
     await controller.preview(1, first.connection.id, {
-      tabId: 7, documentId: 'doc-7', selectionId: 'selection-1', visible: true, sequence: 0,
+      tabId: 7, documentId: 'doc-7', selectionId: 'selection-1', visible: true,
     });
     first.connection.disconnect();
     const second = connect();
     await tick();
     await controller.stateChanged(state(7, 'active', 3, 'doc-7', 'selection-1'), { tabId: 7, windowId: 1 });
     await controller.preview(1, second.connection.id, {
-      tabId: 7, documentId: 'doc-7', selectionId: 'selection-1', visible: true, sequence: 0,
+      tabId: 7, documentId: 'doc-7', selectionId: 'selection-1', visible: true,
     });
     const requests = activation.preview.mock.calls.map(([, request]) => ({ visible: request.visible, sequence: request.sequence }));
     expect(requests).toEqual([
       { visible: true, sequence: 1 }, { visible: false, sequence: 2 }, { visible: true, sequence: 3 },
     ]);
-  });
-
-  it('fences a fresh background stream and clears a surviving page without a target', async () => {
-    const { makeController, activation, pages } = setup();
-    const accepted: Array<{ visible: boolean; streamEpoch: number; sequence: number }> = [];
-    let lastEpoch = -1;
-    let lastSequence = -1;
-    const page = createInspectionController({
-      tabId: 7,
-      documentId: 'surviving-page',
-      createSession: async () => ({
-        get isDisposed() { return false; },
-        setPaddingPreview(intent) {
-          const epoch = intent.streamEpoch ?? 0;
-          if (epoch < lastEpoch || (epoch === lastEpoch && intent.sequence <= lastSequence)) return;
-          lastEpoch = epoch;
-          lastSequence = intent.sequence;
-          accepted.push({ visible: intent.visible, streamEpoch: epoch, sequence: intent.sequence });
-        },
-        dispose() { /* test session */ },
-      }),
-    });
-    pages.set(7, page);
-    await page.handle(makeRequest('start', 7, 'surviving-start'));
-    page.selectionChanged(selection('selection-1'));
-
-    const first = makeController(1);
-    const firstConnection = first.connect(1, () => undefined);
-    await vi.waitFor(() => expect(activation.query).toHaveBeenCalled());
-    await first.preview(1, firstConnection.id, {
-      tabId: 7, documentId: 'surviving-page', selectionId: 'selection-1', visible: true, sequence: 0,
-    });
-    expect(accepted.at(-1)?.visible).toBe(true);
-
-    const fresh = makeController(2);
-    const freshConnection = fresh.connect(1, () => undefined);
-    await vi.waitFor(() => expect(accepted.at(-1)).toEqual({ visible: false, streamEpoch: 2, sequence: 1 }));
-    const countAfterReconciliation = accepted.length;
-
-    // A delayed packet from the retired worker cannot resurrect the overlay,
-    // even though its sequence is larger than the new worker's sequence.
-    page.handlePreview({
-      kind: 'visual-debug:inspection-preview', tabId: 7, documentId: 'surviving-page',
-      selectionId: 'selection-1', preview: 'padding', visible: true, streamEpoch: 1, sequence: 99,
-    });
-    expect(accepted).toHaveLength(countAfterReconciliation);
-
-    firstConnection.disconnect();
-    freshConnection.disconnect();
   });
 
   it('does not retain a preview target after a rejected acknowledgement', async () => {
@@ -518,11 +468,11 @@ describe('sidebar controller', () => {
     await controller.stateChanged(state(7, 'active', 2, 'doc-7', 'selection-1'), { tabId: 7, windowId: 1 });
     activation.preview.mockRejectedValueOnce(new Error('rejected'));
     await expect(controller.preview(1, connection.id, {
-      tabId: 7, documentId: 'doc-7', selectionId: 'selection-1', visible: true, sequence: 0,
+      tabId: 7, documentId: 'doc-7', selectionId: 'selection-1', visible: true,
     })).rejects.toThrow('rejected');
     activation.preview.mockResolvedValue(undefined);
     await controller.preview(1, connection.id, {
-      tabId: 7, documentId: 'doc-7', selectionId: 'selection-1', visible: true, sequence: 0,
+      tabId: 7, documentId: 'doc-7', selectionId: 'selection-1', visible: true,
     });
     expect(activation.preview.mock.calls.map(([, request]) => request.sequence)).toEqual([1, 2]);
   });

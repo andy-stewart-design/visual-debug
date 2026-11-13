@@ -25,27 +25,23 @@ export default function BoxModelOverlay(props: BoxModelOverlayProps) {
   };
 
   return (
-    <Show when={geometry()} keyed>
-      {(value) => {
-        const outer = value.outer;
-        const path = createPaddingPreviewPath(value);
-        return (
-          <svg
-            class={s.region}
-            aria-hidden="true"
-            viewBox={`0 0 ${outer.width} ${outer.height}`}
-            preserveAspectRatio="none"
-            style={{
-              left: `${outer.left}px`,
-              top: `${outer.top}px`,
-              width: `${outer.width}px`,
-              height: `${outer.height}px`,
-            }}
-          >
-            <path d={path} fill-rule="evenodd" />
-          </svg>
-        );
-      }}
+    <Show when={geometry()}>
+      {(value) => (
+        <svg
+          class={s.region}
+          aria-hidden="true"
+          viewBox={`0 0 ${value().outer.width} ${value().outer.height}`}
+          preserveAspectRatio="none"
+          style={{
+            left: `${value().outer.left}px`,
+            top: `${value().outer.top}px`,
+            width: `${value().outer.width}px`,
+            height: `${value().outer.height}px`,
+          }}
+        >
+          <path d={createPaddingPreviewPath(value())} fill-rule="evenodd" />
+        </svg>
+      )}
     </Show>
   );
 }

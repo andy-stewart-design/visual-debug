@@ -58,8 +58,6 @@ export interface InspectionPreviewRequest {
   preview: InspectionPreviewKind;
   visible: boolean;
   sequence: number;
-  /** Monotonic extension-wide stream epoch; optional for old in-memory callers. */
-  streamEpoch?: number;
 }
 
 export interface InspectionPreviewResponse {
@@ -68,7 +66,6 @@ export interface InspectionPreviewResponse {
   tabId: number;
   documentId: string;
   sequence: number;
-  streamEpoch?: number;
 }
 
 export interface StyleEditResponse {
@@ -78,7 +75,6 @@ export interface StyleEditResponse {
   documentId: string;
   selectionId: string;
   editId: string;
-  order: number;
   property: 'padding';
   side: PaddingSide;
   state?: InspectionState;
@@ -117,7 +113,6 @@ export function isInspectionOperation(value: unknown): value is InspectionOperat
 function isStyleEditRequest(value: unknown): value is StyleEditRequest {
   return isRecord(value) && value.kind === STYLE_EDIT_MESSAGE && isTabId(value.tabId) &&
     isNonEmptyString(value.documentId) && isNonEmptyString(value.selectionId) && isNonEmptyString(value.editId) &&
-    typeof value.order === 'number' && Number.isSafeInteger(value.order) && value.order >= 0 &&
     value.property === 'padding' && typeof value.side === 'string' && PADDING_SIDES.includes(value.side as PaddingSide) &&
     typeof value.value === 'number' && Number.isFinite(value.value) && value.value >= 0;
 }
@@ -136,7 +131,7 @@ export function validateStyleEditRequest(
 export function makeStyleEditResponse(request: StyleEditRequest, ok: boolean, error?: string, state?: InspectionState): StyleEditResponse {
   return {
     kind: STYLE_EDIT_MESSAGE, ok, tabId: request.tabId, documentId: request.documentId,
-    selectionId: request.selectionId, editId: request.editId, order: request.order,
+    selectionId: request.selectionId, editId: request.editId,
     property: request.property, side: request.side,
     ...(state === undefined ? {} : { state }), ...(error === undefined ? {} : { error }),
   };
@@ -145,8 +140,7 @@ export function makeStyleEditResponse(request: StyleEditRequest, ok: boolean, er
 export function validateStyleEditResponse(value: unknown): StyleEditResponse | undefined {
   if (!isRecord(value) || value.kind !== STYLE_EDIT_MESSAGE || typeof value.ok !== 'boolean' ||
     !isTabId(value.tabId) || !isNonEmptyString(value.documentId) || !isNonEmptyString(value.selectionId) ||
-    !isNonEmptyString(value.editId) || typeof value.order !== 'number' || !Number.isSafeInteger(value.order) || value.order < 0 ||
-    value.property !== 'padding' || typeof value.side !== 'string' || !PADDING_SIDES.includes(value.side as PaddingSide) ||
+    !isNonEmptyString(value.editId) || value.property !== 'padding' || typeof value.side !== 'string' || !PADDING_SIDES.includes(value.side as PaddingSide) ||
     (value.state !== undefined && !isInspectionState(value.state)) || (value.error !== undefined && typeof value.error !== 'string')) return undefined;
   if (!value.ok && value.error === undefined) return undefined;
   if (value.ok && value.state === undefined) return undefined;
@@ -159,9 +153,7 @@ function isInspectionPreviewRequest(value: unknown): value is InspectionPreviewR
   return isRecord(value) && value.kind === INSPECTION_PREVIEW_MESSAGE && isTabId(value.tabId) &&
     isNonEmptyString(value.documentId) && isNonEmptyString(value.selectionId) && value.preview === 'padding' &&
     typeof value.visible === 'boolean' && typeof value.sequence === 'number' &&
-    Number.isSafeInteger(value.sequence) && value.sequence >= 0 &&
-    (value.streamEpoch === undefined || (typeof value.streamEpoch === 'number' &&
-      Number.isSafeInteger(value.streamEpoch) && value.streamEpoch >= 0));
+    Number.isSafeInteger(value.sequence) && value.sequence >= 0;
 }
 
 export function validateInspectionPreviewRequest(
@@ -182,16 +174,13 @@ export function makePreviewResponse(
   return {
     kind: INSPECTION_PREVIEW_MESSAGE, ok, tabId: request.tabId, documentId: request.documentId,
     sequence: request.sequence,
-    ...(request.streamEpoch === undefined ? {} : { streamEpoch: request.streamEpoch }),
   };
 }
 
 export function validateInspectionPreviewResponse(value: unknown): InspectionPreviewResponse | undefined {
   if (!isRecord(value) || value.kind !== INSPECTION_PREVIEW_MESSAGE || typeof value.ok !== 'boolean' ||
     !isTabId(value.tabId) || !isNonEmptyString(value.documentId) || typeof value.sequence !== 'number' ||
-    !Number.isSafeInteger(value.sequence) || value.sequence < 0 ||
-    (value.streamEpoch !== undefined && (typeof value.streamEpoch !== 'number' ||
-      !Number.isSafeInteger(value.streamEpoch) || value.streamEpoch < 0))) return undefined;
+    !Number.isSafeInteger(value.sequence) || value.sequence < 0) return undefined;
   return value as unknown as InspectionPreviewResponse;
 }
 
